@@ -67,6 +67,9 @@ def main():
     odoo.tools.config.set_admin_password(password)
     odoo.tools.config.save()
 
+    # restart odoo to apply updated password
+    subprocess.run(['systemctl', 'restart', 'odoo'])
+
     if not default_db_exists:
         sys.exit(1)
 
