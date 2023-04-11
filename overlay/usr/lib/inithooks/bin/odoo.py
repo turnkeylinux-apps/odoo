@@ -51,15 +51,24 @@ def main():
 
     processed_password = CryptContext(['pbkdf2_sha512']).hash(password)
 
-    p = PostgreSQL('TurnkeylinuxExample')
-    p.execute("UPDATE res_users SET password='{}' WHERE id=2".format(
-        processed_password).encode('utf8'))
+    default_db = 'TurnkeylinuxExample'
+    default_db_exists = True
+    try:
+        p = PostgreSQL(default_db)
+        p.execute("UPDATE res_users SET password='{}' WHERE id=2".format(
+            processed_password).encode('utf8'))
+    except subprocess.CalledProcessError as e:
+        default_db_exists = False
+        print(f"Default DB ({default_db}) not found - skipping setting passsword for that")
 
     sys.path.insert(0, '/usr/lib/python3/dist-packages')
     import odoo
     odoo.tools.config.parse_config(['--config=/etc/odoo/odoo.conf'])
     odoo.tools.config.set_admin_password(password)
     odoo.tools.config.save()
+
+    if not default_db_exists:
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
