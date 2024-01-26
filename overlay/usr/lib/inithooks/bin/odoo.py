@@ -28,26 +28,31 @@ def usage(s=None):
 
 def main():
     try:
-        opts, args = getopt.gnu_getopt(sys.argv[1:], "h",
-                                       ['help', 'pass='])
+        opts, args = getopt.gnu_getopt(sys.argv[1:], "h", ['help', 'pass=', 'dbname='])
     except getopt.GetoptError as e:
         usage(e)
 
     password = ""
+    db_name = ""
     for opt, val in opts:
         if opt in ('-h', '--help'):
             usage()
         elif opt == '--pass':
             password = val
+        elif opt == '--dbname':
+            db_name = val
 
-
+    d = Dialog('TurnKey Linux - First boot configuration')
     if not password:
-        d = Dialog('TurnKey Linux - First boot configuration')
         password = d.get_password(
-            "Odoo Database Managment & example 'admin' Password",
-            "Enter new password for Odoo Database Management - create/delete/manage Odoo DBs. "
-                "This password will also login to 'admin' account of default/example Odoo.",
+            "Odoo Database Management & 'admin' Password",
+            "Enter new password for Odoo Database Management and 'admin' account:",
             blacklist=['\\', '/'])
+    
+    if not db_name:
+        db_name = d.get_input(
+            "Odoo Database Name",
+            "Enter the name for the Odoo database:")
 
     processed_password = CryptContext(['pbkdf2_sha512']).hash(password)
 
