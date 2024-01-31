@@ -5,6 +5,8 @@ odoo-16
 wkhtmltopdf
 python3-psycogreen
 python3-docutils
+python3-pip
+python3-cffi
 
 adduser             
 postgresql-client   
