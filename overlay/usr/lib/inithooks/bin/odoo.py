@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 """Set Odoo Admin Password
 Option:
     --pass=    unless provided, will ask interactively
