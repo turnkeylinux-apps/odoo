@@ -5,6 +5,9 @@ odoo-16
 xfonts-75dpi
 wkhtmltopdf
 python3-psycogreen
+python3-docutils
+python3-pip
+python3-cffi
 
 adduser             
 postgresql-client   
