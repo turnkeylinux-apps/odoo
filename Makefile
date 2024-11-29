@@ -1,7 +1,2 @@
-CREDIT_ANCHORTEXT = Turnkey Odoo Appliance
-
-BACKPORTS=y # install Odoo v16.x from backports
-BACKPORTS_PINS=odoo-16
-
-include $(FAB_PATH)/common/mk/turnkey/lapp.mk
+CREDIT_ANCHORTEXT = TurnKey Odoo Appliance
 include $(FAB_PATH)/common/mk/turnkey.mk

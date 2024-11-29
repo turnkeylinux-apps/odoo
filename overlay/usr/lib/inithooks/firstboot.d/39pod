@@ -1,0 +1,60 @@
+#!/bin/bash -ex
+# initialize pod
+
+. /etc/default/inithooks
+[ -e "$INITHOOKS_CONF" ] && . "$INITHOOKS_CONF"
+
+echo 'Setting up pod...'
+
+pod() {
+  op="$1"
+  shift
+
+  case "$op" in
+    run)
+      set -- --rm "$@"
+      ;;
+    create)
+      set -- --replace --restart always "$@"
+      ;;
+  esac
+
+  set -- "$op" --pod app "$@"
+  podman "$@"
+}
+
+echo 'Creating app pod...'
+podman pod create --replace --name app -p 80:80 -p 443:443 -p 127.0.0.1:5432:5432
+
+ENVFILE='/etc/turnkey-podman/.env'
+. "$ENVFILE"
+
+# db
+echo 'Setting up database...'
+
+PG_IMAGE='postgres:15-alpine'
+PG_VOLUME='data-pg:/var/lib/postgresql/data:rw'
+
+pod run -d --name db -v "$PG_VOLUME" --env-file "$ENVFILE" "$PG_IMAGE"
+
+# nginx
+echo 'Setting up nginx...'
+
+NGX_VOLUME="/etc/nginx/conf.d:/etc/nginx/conf.d:ro"
+TLS_VOLUME='/etc/ssl/private:/etc/ssl/private:ro'
+
+pod create --name nginx -v "$NGX_VOLUME" -v "$TLS_VOLUME" nginx:alpine
+
+echo 'Setting up Odoo...'
+
+mkdir -p "/opt/odoo/addons"
+
+ODOO_VOLUME='data-odoo:/var/lib/odoo:rw'
+ODOO_ADDONS='/opt/odoo/addons:/mnt/extra-addons:ro'
+ODOO_CONFIG='/etc/odoo/odoo.conf:/etc/odoo/odoo.conf:ro'
+
+pod run -v "$ODOO_VOLUME" --env-file "$ENVFILE" odoo:18 odoo --no-http --stop-after-init --without-demo=all -d "$POSTGRES_DB" -i base
+pod create --name odoo -v "$ODOO_VOLUME" -v "$ODOO_ADDONS" -v "$ODOO_CONFIG" --env-file "$ENVFILE" odoo:18
+pod create --name db -v "$PG_VOLUME" --env-file "$ENVFILE" "$PG_IMAGE"
+
+podman pod start app

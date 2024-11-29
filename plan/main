@@ -1,13 +1,7 @@
 #include <turnkey/base>
-#include <turnkey/lapp>
 
-odoo-16
-xfonts-75dpi
-wkhtmltopdf
-python3-psycogreen
-
-adduser             
-postgresql-client   
-python3
-
-python3-passlib      /* Needed to set admin password */
+jq
+podman
+catatonit
+fuse-overlayfs
+python3-passlib /* Needed to set admin password */

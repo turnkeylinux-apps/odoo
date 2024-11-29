@@ -14,70 +14,35 @@ This appliance includes all the standard features in `TurnKey Core`_:
 
 - Odoo configurations for TurnKey v18.x:
 
-    - Odoo v16 installed from debian backports apt repo (v18.x).
+    - Odoo v18 installed from Docker Hub.
     - Includes modules from base install of Odoo.
 
-- **Security note**: As of 18.0, due to using the debian backports repo
-  Updates to Odoo **ARE NOT** configured to install automatically.
+- **Security note**: Updates to Odoo **ARE NOT** configured to install automatically.
 
 - SSL support out of the box.
 - `Adminer`_ administration frontend for PostgreSQL (listening on
   port 12322 - uses SSL).
-- Webmin modules for configuring Apache2, PostgreSQL and Postfix.
-
-**To create a new Odoo Databse (i.e. site)**
-
-To create a new Odoo DB, the Odoo config file needs to be edited and the
-Odoo service restarted.
-
-Overview of process:
-1. Edit /etc/odoo/odoo
-   - change value of "db_name" from "TurnkeylinuxExample" to your desired DB
-     name
-2. Restart odoo.service
-3. Reload Odoo login screen in your browser and you should be good to go
-
-Webmin steps:
-1.
-    - Browse to 'Tools' >> 'FileManager'
-    - Navigate to '/etc/odoo' and edit the 'odoo.conf' file
-    - Edit as per step 1 above
-    - Save changes
-2.
-    - Navigate to 'System' >> 'Bootup and Shutdown'
-    - Find the "odoo.service" in the list and select it via the checkbox
-    - Scroll to the bottom and select 'Restart'
-3.
-    - As per step 3 above
-
-CLI steps:
-1.
-    - Edit /etc/odoo/odoo as per step 1
-2.
-    - Restart odoo.service::
-
-        systemctl restart odoo
-3.
-    - As per step 3 above
+- Webmin modules for configuring PostgreSQL and Postfix.
 
 **Notice for special Odoo Localization**
 
-In case you run a L10n Odoo Localization you will need other PIP Packages
-and Libs installed on your system, please check your localization support on
-OCA_.
+In case you need an Odoo Localization you might need other `pip` packages
+and libs installed in the `odoo` container, please check your localization support
+on OCA_.
 
 Credentials *(passwords set at first boot)*
 -------------------------------------------
 
 **Note**: the Odoo password set at firstboot applies to both the Odoo
-admin account (example app) AND the masterpassword  - however these can be
-changed individually after firstboot.
+admin account (example app) AND the master password, however these can be
+changed individually as per upstream docs_ after firstboot.
 
 -  Webmin, SSH: username **root**
--  PostgreSQL, Adminer: username **postgres**
+-  PostgreSQL, Adminer: randomly generated (see `/etc/turnkey-podman/.env`)
 -  Odoo Master Account: **admin**
 
-.. _Odoo: https://www.odoo.com/
+.. _Odoo: https://www.odoo.com
 .. _TurnKey Core: https://www.turnkeylinux.org/core
-.. _Adminer: https://www.adminer.org/
+.. _Adminer: https://www.adminer.org
 .. _OCA: https://github.com/OCA
+.. _docs: https://www.odoo.com/documentation

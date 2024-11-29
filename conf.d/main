@@ -1,87 +1,38 @@
 #!/bin/bash -ex
 
-# Set variables
-#
- 
-DB_USER=odoo
-DB_PASS=$(mcookie)
-DB_NAME="TurnkeylinuxExample"
+export DEPS=( postgres:15-alpine nginx:alpine odoo:18 )
 
-# We will use a random password for now. Reset during inithook
-ODOO_ADMIN_PASSWORD=$(mcookie)
+# clean up build fs
+fs_cleanup() {
+  mount -l -t fuse.fuse-overlayfs | cut -d " " -f3 | xargs -rL1 fusermount -u || true
+  umount -vRf /sys || true
+  rm -f /dev/fuse
+}
 
-# User name that Odoo will run under
-SERVICE_USER=$DB_USER
+cache_images() {
+  # umount everything if build fails; otherwise `deck -D` won't work!
+  trap fs_cleanup INT TERM EXIT
 
-CONF=/etc/odoo/odoo.conf
+  # podman requires sysfs & cgroups & fuse for fuse-overlayfs
+  mount -t sysfs sysfs /sys -o ro,nosuid,nodev,noexec,relatime
+  mkdir -p /sys/fs/{cgroup,fuse/connections}
+  mount -t cgroup2 cgroup2 /sys/fs/cgroup -o rw,nosuid,nodev,noexec,relatime
+  mount -t fusectl fusectl /sys/fs/fuse/connections -o rw,nosuid,nodev,noexec,relatime
+  mknod /dev/fuse -m 0666 c 10 229 || true
 
-# Create database role for odoo
-# *******************************************
- 
-# Start postgresql server
-systemctl start postgresql
+  [[ "$FAB_HTTP_PROXY" ]] && export HTTP_PROXY="$FAB_HTTP_PROXY"
 
-# Create db user
-su postgres -c "createuser --superuser --createdb --no-createrole $DB_USER"
+  local name
+  for i in "${DEPS[@]}"; do
+    name="$(basename "$i" | cut -d':' -f1)"
 
-# Set db user password
-su postgres -c "psql postgres" << EOF
-alter user $DB_USER with encrypted password '$DB_PASS';
-EOF
-su postgres -c "psql postgres" << EOF
-create database "$DB_NAME" owner $DB_USER;
-EOF
+    podman pull "docker.io/$i"
+    podman save --format oci-dir -o "/var/cache/podman-images/$name" "$i"
+  done
 
-# Set password/name in config file
-sed -i "s|db_password =.*|db_password = $DB_PASS|" $CONF
-sed -i "s|db_host =.*|db_host = localhost|" $CONF
-echo "db_name = $DB_NAME" >> $CONF
+  unset HTTP_PROXY
 
-# Stop postgresql server
-systemctl stop postgresql
+  podman system reset -f
+}
 
-# Set admin password to random value for now
-sed -i "s|admin_passwd =.*|admin_passwd = $ODOO_ADMIN_PASSWORD|" $CONF
-chown odoo:odoo $CONF
-
-# Add and disable service user
-usermod -L $SERVICE_USER
-
-# Enable needed modules
-a2enmod proxy_http headers rewrite		
-
-# Configure sites
-a2dissite 000-default
-a2ensite odoo.conf
-
-# Populate database
-systemctl start postgresql
-systemctl start apache2
-
-su odoo -g odoo -s '/bin/bash' -c 'odoo -i base \
-    --stop-after-init --db_host=localhost \
-    -d '"\"$DB_NAME\""' \
-    -r '"\"$DB_USER\""' \
-    -w '"\"$DB_PASS\""' \
-    -s -c '"\"$CONF\""
-
-# enable and start odoo
-systemctl enable odoo
-systemctl start odoo
-
-while [[ "$(curl -Lk http://localhost)" = *"Unavailable"* ]]; do
-    sleep 1
-done
-
-URL="https://127.0.0.1/web"
-CURL="curl --insecure -c /tmp/cookie -b /tmp/cookie"
-
-$CURL $URL/login
-sleep 1
-$CURL $URL/database/manager
-sleep 1
-$CURL $URL/database/change_password --data-raw "master_pwd=admin&master_pwd_new=${ODOO_ADMIN_PASSWORD}"
-
-systemctl stop odoo
-systemctl stop postgresql
-systemctl stop apache2 
+cache_images

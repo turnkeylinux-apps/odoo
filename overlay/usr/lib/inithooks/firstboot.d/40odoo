@@ -1,13 +1,10 @@
-#!/bin/bash -e		
-# set Odoo Admin password
+#!/bin/bash -e
+# set Odoo admin password
 
 . /etc/default/inithooks
 
-[ -e $INITHOOKS_CONF ] && . $INITHOOKS_CONF
+[ -e "$INITHOOKS_CONF" ] && . "$INITHOOKS_CONF"
+[ -e "/etc/turnkey-podman/.env" ] && . "/etc/turnkey-podman/.env"
 
-$INITHOOKS_PATH/bin/odoo.py --pass="$APP_PASS"
-
-# Since we reset the password, reload Odoo
-# Don't use systemd/systemctl right now as lxc/ovz does not
-# use systemd
-service odoo restart
+export POSTGRES_USER POSTGRES_DB
+"$INITHOOKS_PATH/bin/odoo.py" --pass="$APP_PASS"

@@ -1,0 +1,50 @@
+#!/bin/bash -ex
+# load cached Podman images
+
+. /etc/default/inithooks
+[ -e "$INITHOOKS_CONF" ] && . "$INITHOOKS_CONF"
+
+CACHE='/var/cache/podman-images'
+
+if [[ -d "$CACHE" ]]; then
+  echo 'Loading stored Podman images...'
+
+  if mount | grep -q 'on / .*live'; then
+    # grow tmpfs
+    mount -o remount,size=90% /run/live/overlay
+
+    MAX="$(du -sm "$CACHE" | sort -rh | head -1 | cut -f1)"
+    FREE="$(free -m | head -2 | tail -1 | awk '{print $7;}')"
+
+    echo "Running live -- checking memory usage."
+    echo "Max memory used for images will be ${MAX}M, ${FREE}M is currently free."
+
+    if [[ "$MAX" -ge "$FREE" ]]; then
+      echo "max ${MAX}M >= free ${FREE}M!"
+      echo "Install to disk or add more RAM."
+      echo "Cannot run live on this system, exiting."
+      exit 1
+    else
+      echo 'This is fine.'
+    fi
+  fi
+
+  # load and clean up images
+  for i in "$CACHE"/*; do
+    podman load -qi "${i}"
+
+    # restore old tag for sane updates later
+    TAG="$(basename "$i")"
+    ORIG_TAG="$(jq -r '.manifests | .[] | .annotations | .[]' "${i}/index.json")"
+    podman tag "$TAG" "$ORIG_TAG" # restores original registry tag
+    podman rmi "localhost$i:latest" # removes just the one local tag
+    rm -r "${i}"
+  done
+
+  echo 'Images loaded:'
+  podman images
+
+  rm -rf "$CACHE"
+else
+  echo 'No cached Podman images to load, skipping...'
+fi
