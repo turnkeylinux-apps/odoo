@@ -1,3 +1,32 @@
+turnkey-odoo-19.0 (1) turnkey; urgency=low
+
+  * Upgraded Odoo to v18 from official Odoo 18.0 nightly apt repository
+    (previously v16 from Debian backports).
+
+  * Python 3.11 (Debian Bookworm native) meets Odoo 18 requirement of
+    Python 3.10+.
+
+  * PostgreSQL 15 (Debian Bookworm native) meets Odoo 18 requirement.
+
+  * Added /opt/odoo/custom-addons directory for custom/OCA modules.
+
+  * Updated odoo.conf with Odoo 18 optimized defaults (workers, memory
+    limits, proxy_mode, gevent_port for WebSocket).
+
+  * Added Apache WebSocket proxy support (mod_proxy_wstunnel) for Odoo 18
+    live chat, discuss, and real-time notifications.
+
+  * Updated inithook for Odoo 18 compatibility (pbkdf2_sha512 hashing).
+
+  * Installed rtlcss via npm for right-to-left language support.
+
+  * Installed wkhtmltopdf 0.12.6 for PDF report generation.
+
+  * Note: Please refer to turnkey-core's changelog for changes common to
+    all appliances.
+
+ -- Marcos Méndez <m@pop.coop>  Mon, 16 Mar 2026 04:00:54 -0300
+
 turnkey-odoo-18.0 (1) turnkey; urgency=low
 
   * Install Odoo v16.x from Debian backports (bookworm-backports) apt

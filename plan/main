@@ -1,13 +1,56 @@
-#include <turnkey/base>
-#include <turnkey/lapp>
+# TurnKey Odoo 18 - Package Plan
+# Odoo 18 installed via official nightly apt repo in conf.d/main
 
-odoo-16
-xfonts-75dpi
-wkhtmltopdf
-python3-psycogreen
+postgresql
+postgresql-client
 
-adduser             
-postgresql-client   
-python3
+# Python3 dependencies for Odoo 18
+python3-babel
+python3-chardet
+python3-dateutil
+python3-decorator
+python3-docutils
+python3-feedparser
+python3-gevent
+python3-greenlet
+python3-html2text
+python3-idna
+python3-jinja2
+python3-libsass
+python3-lxml
+python3-mako
+python3-markupsafe
+python3-num2words
+python3-ofxparse
+python3-openssl
+python3-passlib
+python3-pil
+python3-polib
+python3-psutil
+python3-psycopg2
+python3-pydot
+python3-pypdf2
+python3-qrcode
+python3-reportlab
+python3-requests
+python3-stdnum
+python3-tz
+python3-vobject
+python3-werkzeug
+python3-xlrd
+python3-xlsxwriter
+python3-xlwt
+python3-zeep
 
-python3-passlib      /* Needed to set admin password */
+# System dependencies
+node-less
+nodejs
+npm
+libldap2-dev
+libsasl2-dev
+libpq-dev
+libxml2-dev
+libxslt1-dev
+
+# Adminer for PostgreSQL management
+adminer

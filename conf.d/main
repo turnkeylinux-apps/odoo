@@ -1,87 +1,106 @@
 #!/bin/bash -ex
+# TurnKey Odoo 18 — Main Configuration Script
 
-# Set variables
-#
- 
-DB_USER=odoo
-DB_PASS=$(mcookie)
+SRC=/usr/local/src
+
+# -----------------------------------------------
+# 1. Add Odoo 18 official nightly repository
+# -----------------------------------------------
+wget -qO - https://nightly.odoo.com/odoo.key \
+    | gpg --dearmor -o /usr/share/keyrings/odoo-archive-keyring.gpg
+
+echo 'deb [signed-by=/usr/share/keyrings/odoo-archive-keyring.gpg] https://nightly.odoo.com/18.0/nightly/deb/ ./' \
+    > /etc/apt/sources.list.d/odoo.list
+
+apt-get update
+DEBIAN_FRONTEND=noninteractive apt-get install -y odoo
+
+# -----------------------------------------------
+# 2. Install wkhtmltopdf (patched QT version)
+# -----------------------------------------------
+if ! wkhtmltopdf --version 2>/dev/null | grep -q "0.12.6"; then
+    WKHTMLTOPDF_DEB="wkhtmltox_0.12.6.1-2.bookworm_amd64.deb"
+    WKHTMLTOPDF_URL="https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2"
+    cd /tmp
+    wget "${WKHTMLTOPDF_URL}/${WKHTMLTOPDF_DEB}" || true
+    if [ -f "${WKHTMLTOPDF_DEB}" ]; then
+        dpkg -i "${WKHTMLTOPDF_DEB}" || apt-get install -f -y
+        rm -f "${WKHTMLTOPDF_DEB}"
+    fi
+    cd -
+fi
+
+# -----------------------------------------------
+# 3. Install rtlcss (for right-to-left languages)
+# -----------------------------------------------
+npm install -g rtlcss
+
+# -----------------------------------------------
+# 4. Stop Odoo for initial configuration
+# -----------------------------------------------
+systemctl stop odoo || true
+
+# -----------------------------------------------
+# 5. Create custom addons directory
+# -----------------------------------------------
+mkdir -p /opt/odoo/custom-addons
+chown odoo:odoo /opt/odoo/custom-addons
+
+mkdir -p /var/log/odoo
+chown odoo:odoo /var/log/odoo
+
+# -----------------------------------------------
+# 6. Configure Apache proxy for Odoo 18
+# -----------------------------------------------
+# Enable required Apache modules
+a2enmod proxy proxy_http proxy_wstunnel rewrite headers ssl
+
+# -----------------------------------------------
+# 7. Configure PostgreSQL and create example DB
+# -----------------------------------------------
 DB_NAME="TurnkeylinuxExample"
 
-# We will use a random password for now. Reset during inithook
-ODOO_ADMIN_PASSWORD=$(mcookie)
-
-# User name that Odoo will run under
-SERVICE_USER=$DB_USER
-
-CONF=/etc/odoo/odoo.conf
-
-# Create database role for odoo
-# *******************************************
- 
-# Start postgresql server
 systemctl start postgresql
 
-# Create db user
-su postgres -c "createuser --superuser --createdb --no-createrole $DB_USER"
+su - postgres -c "createdb -O odoo ${DB_NAME}" || true
 
-# Set db user password
-su postgres -c "psql postgres" << EOF
-alter user $DB_USER with encrypted password '$DB_PASS';
-EOF
-su postgres -c "psql postgres" << EOF
-create database "$DB_NAME" owner $DB_USER;
-EOF
+su - odoo -s /bin/bash -c \
+    "odoo --database=${DB_NAME} \
+     --init=base \
+     --without-demo=all \
+     --stop-after-init \
+     --config=/etc/odoo/odoo.conf" || true
 
-# Set password/name in config file
-sed -i "s|db_password =.*|db_password = $DB_PASS|" $CONF
-sed -i "s|db_host =.*|db_host = localhost|" $CONF
-echo "db_name = $DB_NAME" >> $CONF
-
-# Stop postgresql server
-systemctl stop postgresql
-
-# Set admin password to random value for now
-sed -i "s|admin_passwd =.*|admin_passwd = $ODOO_ADMIN_PASSWORD|" $CONF
-chown odoo:odoo $CONF
-
-# Add and disable service user
-usermod -L $SERVICE_USER
-
-# Enable needed modules
-a2enmod proxy_http headers rewrite		
-
-# Configure sites
-a2dissite 000-default
-a2ensite odoo.conf
-
-# Populate database
-systemctl start postgresql
-systemctl start apache2
-
-su odoo -g odoo -s '/bin/bash' -c 'odoo -i base \
-    --stop-after-init --db_host=localhost \
-    -d '"\"$DB_NAME\""' \
-    -r '"\"$DB_USER\""' \
-    -w '"\"$DB_PASS\""' \
-    -s -c '"\"$CONF\""
-
-# enable and start odoo
-systemctl enable odoo
+# -----------------------------------------------
+# 8. Start services and set master password
+# -----------------------------------------------
 systemctl start odoo
 
-while [[ "$(curl -Lk http://localhost)" = *"Unavailable"* ]]; do
-    sleep 1
+CURL="curl -s -k -L --max-time 5"
+URL="http://127.0.0.1:8069"
+MAX_TRIES=60
+COUNT=0
+
+echo "Waiting for Odoo to start..."
+while [ $COUNT -lt $MAX_TRIES ]; do
+    if $CURL $URL/web/login 2>/dev/null | grep -q "login"; then
+        echo "Odoo is ready."
+        break
+    fi
+    COUNT=$((COUNT + 1))
+    sleep 2
 done
 
-URL="https://127.0.0.1/web"
-CURL="curl --insecure -c /tmp/cookie -b /tmp/cookie"
+if [ $COUNT -ge $MAX_TRIES ]; then
+    echo "WARNING: Odoo may not have started within expected time"
+fi
 
-$CURL $URL/login
-sleep 1
-$CURL $URL/database/manager
-sleep 1
-$CURL $URL/database/change_password --data-raw "master_pwd=admin&master_pwd_new=${ODOO_ADMIN_PASSWORD}"
+ODOO_ADMIN_PASSWORD="${ODOO_ADMIN_PASSWORD:-admin}"
+$CURL $URL/database/change_password \
+    --data-raw "master_pwd=admin&master_pwd_new=${ODOO_ADMIN_PASSWORD}" || true
 
+# -----------------------------------------------
+# 9. Stop for appliance packaging
+# -----------------------------------------------
 systemctl stop odoo
 systemctl stop postgresql
-systemctl stop apache2 
