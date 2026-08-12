@@ -1,13 +1,24 @@
-#!/bin/bash -e		
-# set Odoo Admin password
+#!/bin/bash -e
+# configure Odoo: passwords, database name, demo data & OCA localizations
 
 . /etc/default/inithooks
 
 [ -e $INITHOOKS_CONF ] && . $INITHOOKS_CONF
 
-$INITHOOKS_PATH/bin/odoo.py --pass="$APP_PASS"
+# Optional pre-seeds (e.g. via inithooks.conf / TurnKey Hub):
+#   APP_PASS      Odoo master & 'admin' password (empty = ask interactively)
+#   ODOO_DB_NAME  database name (default: keep the configured one)
+#   ODOO_DEMO     load demo data in new database (yes|no; default: no)
+#   ODOO_L10N     comma separated OCA localizations (e.g. brazil,spain)
 
-# Since we reset the password, reload Odoo
-# Don't use systemd/systemctl right now as lxc/ovz does not
-# use systemd
-service odoo restart
+ARGS=()
+[ -n "$ODOO_DB_NAME" ] && ARGS+=(--dbname="$ODOO_DB_NAME")
+[ -n "$ODOO_DEMO" ] && ARGS+=(--demo="$ODOO_DEMO")
+[ -n "$ODOO_L10N" ] && ARGS+=(--l10n="$ODOO_L10N")
+
+# password via the environment rather than argv - /proc/<pid>/cmdline is
+# world readable, /proc/<pid>/environ is not
+export ODOO_PASS="$APP_PASS"
+
+# odoo.py restarts the odoo service itself after (re)configuration
+$INITHOOKS_PATH/bin/odoo.py "${ARGS[@]}"
