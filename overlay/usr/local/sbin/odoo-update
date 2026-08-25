@@ -1,0 +1,38 @@
+#!/bin/bash
+set -Eeuo pipefail
+
+if [[ ${1:-} != --check || $# -ne 1 ]]; then
+    echo "usage: odoo-update --check" >&2
+    exit 2
+fi
+
+source_record=/usr/local/share/turnkey-odoo/source
+keyring=/usr/share/keyrings/odoo-archive-keyring.gpg
+
+# shellcheck disable=SC1090
+. "$source_record"
+
+installed=$(dpkg-query -W -f='${Version}' odoo)
+candidate=$(apt-cache policy odoo | awk '/Candidate:/ { print $2; exit }')
+fingerprint=$(gpg --show-keys --with-colons "$keyring" |
+    awk -F: '$1 == "fpr" { print $10; exit }')
+
+test "$installed" = "$installed_version"
+test "$fingerprint" = "$repository_key_fingerprint"
+test "$candidate" != "(none)"
+grep -Fq 'https://nightly.odoo.com/19.0/nightly/deb/ ./' \
+    /etc/apt/sources.list.d/odoo.list
+
+if dpkg --compare-versions "$candidate" eq "$installed"; then
+    status=up-to-date
+else
+    status=supervised-update-available
+fi
+
+cat <<EOF
+installed=$installed
+candidate=$candidate
+channel=official-odoo-19-community-daily
+status=$status
+integrity=APT-signed-by-$fingerprint
+EOF

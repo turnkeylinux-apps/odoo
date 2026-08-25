@@ -1,8 +1,55 @@
 #!/bin/bash -ex
 
+# Install the supported Odoo Community package from Odoo's official channel.
+ODOO_VERSION=19.0.20260825
+ODOO_REPO=https://nightly.odoo.com/19.0/nightly/deb
+ODOO_PACKAGE_URL="$ODOO_REPO/odoo_${ODOO_VERSION}_all.deb"
+ODOO_PACKAGE_SHA256=e9d89da0fc94cd752b08b1e5501d97f464b834229ff8d68c7fecf24304e1da69
+ODOO_KEY_URL=https://nightly.odoo.com/odoo.key
+ODOO_KEY_SHA256=1d169c013a727fa00238ba3f6417d5f33f162f8fbae32159a87ecab6966bfe8e
+ODOO_KEY_FINGERPRINT=5D134C924CB06330DCEFE2A1DEF2A2198183CBB5
+SOURCE_RECORD=/usr/local/share/turnkey-odoo/source
+
+key=$(mktemp)
+package=$(mktemp --suffix=.deb)
+trap 'find "$key" "$package" -maxdepth 0 -type f -delete' EXIT
+curl -fsSL "$ODOO_KEY_URL" -o "$key"
+echo "$ODOO_KEY_SHA256  $key" | sha256sum -c -
+test "$(gpg --show-keys --with-colons "$key" | awk -F: '$1 == "fpr" { print $10; exit }')" = "$ODOO_KEY_FINGERPRINT"
+gpg --batch --yes --dearmor --output /usr/share/keyrings/odoo-archive-keyring.gpg "$key"
+
+cat >/etc/apt/sources.list.d/odoo.list <<EOF
+deb [signed-by=/usr/share/keyrings/odoo-archive-keyring.gpg] $ODOO_REPO/ ./
+EOF
+cat >/etc/apt/preferences.d/odoo <<EOF
+Package: *
+Pin: origin "nightly.odoo.com"
+Pin-Priority: 100
+
+Package: odoo
+Pin: origin "nightly.odoo.com"
+Pin-Priority: 500
+EOF
+
+apt-get update
+curl -fsSL "$ODOO_PACKAGE_URL" -o "$package"
+echo "$ODOO_PACKAGE_SHA256  $package" | sha256sum -c -
+DEBIAN_FRONTEND=noninteractive apt-get install -y "$package"
+test "$(dpkg-query -W -f='${Version}' odoo)" = "$ODOO_VERSION"
+
+mkdir -p "$(dirname "$SOURCE_RECORD")"
+cat >"$SOURCE_RECORD" <<EOF
+package_source=$ODOO_REPO
+installed_version=$ODOO_VERSION
+package_url=$ODOO_PACKAGE_URL
+package_sha256=$ODOO_PACKAGE_SHA256
+repository_key_fingerprint=$ODOO_KEY_FINGERPRINT
+repository_key_sha256=$ODOO_KEY_SHA256
+EOF
+
 # Set variables
 #
- 
+set +x
 DB_USER=odoo
 DB_PASS=$(mcookie)
 DB_NAME="TurnkeylinuxExample"
@@ -22,7 +69,7 @@ CONF=/etc/odoo/odoo.conf
 systemctl start postgresql
 
 # Create db user
-su postgres -c "createuser --superuser --createdb --no-createrole $DB_USER"
+su postgres -c "createuser --no-superuser --createdb --no-createrole $DB_USER"
 
 # Set db user password
 su postgres -c "psql postgres" << EOF
@@ -42,7 +89,8 @@ systemctl stop postgresql
 
 # Set admin password to random value for now
 sed -i "s|admin_passwd =.*|admin_passwd = $ODOO_ADMIN_PASSWORD|" $CONF
-chown odoo:odoo $CONF
+chown root:odoo $CONF
+chmod 0640 $CONF
 
 # Add and disable service user
 usermod -L $SERVICE_USER
@@ -69,19 +117,13 @@ su odoo -g odoo -s '/bin/bash' -c 'odoo -i base \
 systemctl enable odoo
 systemctl start odoo
 
-while [[ "$(curl -Lk http://localhost)" = *"Unavailable"* ]]; do
-    sleep 1
+for attempt in {1..60}; do
+    curl --insecure --fail --silent https://127.0.0.1/web/login >/dev/null && break
+    sleep 2
 done
-
-URL="https://127.0.0.1/web"
-CURL="curl --insecure -c /tmp/cookie -b /tmp/cookie"
-
-$CURL $URL/login
-sleep 1
-$CURL $URL/database/manager
-sleep 1
-$CURL $URL/database/change_password --data-raw "master_pwd=admin&master_pwd_new=${ODOO_ADMIN_PASSWORD}"
+curl --insecure --fail --silent https://127.0.0.1/web/login >/dev/null
 
 systemctl stop odoo
 systemctl stop postgresql
-systemctl stop apache2 
+systemctl stop apache2
+set -x

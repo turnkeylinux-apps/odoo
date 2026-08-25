@@ -3,9 +3,9 @@
 
 . /etc/default/inithooks
 
-[ -e $INITHOOKS_CONF ] && . $INITHOOKS_CONF
+[[ -e $INITHOOKS_CONF ]] && . "$INITHOOKS_CONF"
 
-$INITHOOKS_PATH/bin/odoo.py --pass="$APP_PASS"
+APP_PASS="$APP_PASS" "$INITHOOKS_PATH/bin/odoo.py"
 
 # Since we reset the password, reload Odoo
 # Don't use systemd/systemctl right now as lxc/ovz does not

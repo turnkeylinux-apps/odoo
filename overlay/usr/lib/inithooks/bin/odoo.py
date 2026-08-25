@@ -5,19 +5,14 @@ Option:
     --pass=    unless provided, will ask interactively
 """
 
-import re
-import sys
 import getopt
-
-import crypt
-import random
-import hashlib
-import configparser
-
+import os
 import subprocess
+import sys
+
 from libinithooks.dialog_wrapper import Dialog
 from pgsqlconf import PostgreSQL
-from passlib.context import CryptContext
+
 
 def usage(s=None):
     if s:
@@ -26,6 +21,7 @@ def usage(s=None):
     print(__doc__, file=sys.stderr)
     sys.exit(1)
 
+
 def main():
     try:
         opts, args = getopt.gnu_getopt(sys.argv[1:], "h",
@@ -33,7 +29,7 @@ def main():
     except getopt.GetoptError as e:
         usage(e)
 
-    password = ""
+    password = os.environ.pop("APP_PASS", "")
     for opt, val in opts:
         if opt in ('-h', '--help'):
             usage()
@@ -44,12 +40,15 @@ def main():
     if not password:
         d = Dialog('TurnKey Linux - First boot configuration')
         password = d.get_password(
-            "Odoo Database Managment & example 'admin' Password",
+            "Odoo Database Management & example 'admin' Password",
             "Enter new password for Odoo Database Management - create/delete/manage Odoo DBs. "
                 "This password will also login to 'admin' account of default/example Odoo.",
             blacklist=['\\', '/'])
 
-    processed_password = CryptContext(['pbkdf2_sha512']).hash(password)
+    sys.path.insert(0, '/usr/lib/python3/dist-packages')
+    import odoo
+
+    processed_password = odoo.tools.config.crypt_context.hash(password)
 
     default_db = 'TurnkeylinuxExample'
     default_db_exists = True
@@ -57,18 +56,18 @@ def main():
         p = PostgreSQL(default_db)
         p.execute("UPDATE res_users SET password='{}' WHERE id=2".format(
             processed_password).encode('utf8'))
-    except subprocess.CalledProcessError as e:
+    except subprocess.CalledProcessError:
         default_db_exists = False
-        print(f"Default DB ({default_db}) not found - skipping setting passsword for that")
+        print(f"Default DB ({default_db}) not found - skipping its password update")
 
-    sys.path.insert(0, '/usr/lib/python3/dist-packages')
-    import odoo
     odoo.tools.config.parse_config(['--config=/etc/odoo/odoo.conf'])
     odoo.tools.config.set_admin_password(password)
     odoo.tools.config.save()
+    subprocess.run(['chown', 'root:odoo', '/etc/odoo/odoo.conf'], check=True)
+    subprocess.run(['chmod', '0640', '/etc/odoo/odoo.conf'], check=True)
 
     # restart odoo to apply updated password
-    subprocess.run(['systemctl', 'restart', 'odoo'])
+    subprocess.run(['systemctl', 'restart', 'odoo'], check=True)
 
     if not default_db_exists:
         sys.exit(1)
