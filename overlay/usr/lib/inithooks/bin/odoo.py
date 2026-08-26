@@ -48,9 +48,9 @@ def main():
             blacklist=['\\', '/'])
 
     sys.path.insert(0, '/usr/lib/python3/dist-packages')
-    import odoo
+    from odoo.tools import config
 
-    processed_password = odoo.tools.config.crypt_context.hash(password)
+    processed_password = config.crypt_context.hash(password)
 
     default_db = 'TurnkeylinuxExample'
     default_db_exists = True
@@ -62,9 +62,9 @@ def main():
         default_db_exists = False
         print(f"Default DB ({default_db}) not found - skipping its password update")
 
-    odoo.tools.config.parse_config(['--config=/etc/odoo/odoo.conf'])
-    odoo.tools.config.set_admin_password(password)
-    odoo.tools.config.save()
+    config.parse_config(['--config=/etc/odoo/odoo.conf'])
+    config.set_admin_password(password)
+    config.save()
     subprocess.run(['chown', 'root:odoo', '/etc/odoo/odoo.conf'], check=True)
     subprocess.run(['chmod', '0640', '/etc/odoo/odoo.conf'], check=True)
 

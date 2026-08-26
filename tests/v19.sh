@@ -2,6 +2,8 @@
 set -Eeuo pipefail
 umask 077
 
+trap 'status=$?; printf "odoo acceptance failed: line=%s status=%s command=%q\n" "$LINENO" "$status" "$BASH_COMMAND" >&2; exit "$status"' ERR
+
 result=${TKL_TEST_RESULT:?TKL_TEST_RESULT is required}
 app_password=${TKL_TEST_APP_PASS:?TKL_TEST_APP_PASS is required}
 source_file=/usr/local/share/turnkey-odoo/source
@@ -61,6 +63,7 @@ authenticate() {
 }
 
 cleanup() {
+    trap - ERR
     set +e
     if [[ -n $cron_id ]]; then
         ocall ir.cron unlink "$(jq -cn --argjson id "$cron_id" '[[$id]]')" |
