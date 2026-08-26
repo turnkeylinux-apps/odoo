@@ -29,13 +29,15 @@ def main():
     except getopt.GetoptError as e:
         usage(e)
 
+    if args:
+        usage("unexpected positional arguments")
+
     password = os.environ.pop("APP_PASS", "")
     for opt, val in opts:
         if opt in ('-h', '--help'):
             usage()
         elif opt == '--pass':
             password = val
-
 
     if not password:
         d = Dialog('TurnKey Linux - First boot configuration')
@@ -67,7 +69,7 @@ def main():
     subprocess.run(['chmod', '0640', '/etc/odoo/odoo.conf'], check=True)
 
     # restart odoo to apply updated password
-    subprocess.run(['systemctl', 'restart', 'odoo'], check=True)
+    subprocess.run(['service', 'odoo', 'restart'], check=True)
 
     if not default_db_exists:
         sys.exit(1)

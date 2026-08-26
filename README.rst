@@ -18,16 +18,16 @@ This appliance includes all the standard features in `TurnKey Core`_:
     - Includes modules from base install of Odoo.
 
 - **Security note**: Odoo application updates require supervision and are not
-  configured to install automatically. Check the official daily channel with
-  ``odoo-update --check``, back up the database, then apply the selected APT
-  update.
+  configured to install automatically. Refresh APT metadata, check the official
+  daily channel with ``odoo-update --check``, back up the database, then apply
+  the selected APT update.
 
 - SSL support out of the box.
 - `Adminer`_ administration frontend for PostgreSQL (listening on
   port 12322 - uses SSL).
 - Webmin modules for configuring Apache2, PostgreSQL and Postfix.
 
-**To create a new Odoo Databse (i.e. site)**
+**To create a new Odoo Database (i.e. site)**
 
 To create a new Odoo DB, the Odoo config file needs to be edited and the
 Odoo service restarted.

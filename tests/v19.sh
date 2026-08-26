@@ -8,9 +8,11 @@ source_file=/usr/local/share/turnkey-odoo/source
 database=TurnkeylinuxExample
 fixture="TurnKey v19 contact $(date +%s)-$$"
 email="odoo-v19-$$@example.invalid"
+cron_marker="TKL-v19-cron-$(date +%s)-$$"
 work=$(mktemp -d /tmp/odoo-v19.XXXXXXXX)
 cookie=$work/cookie
 partner_id=
+cron_id=
 
 ocurl() {
     curl --insecure --fail --silent --show-error \
@@ -18,11 +20,55 @@ ocurl() {
         --header 'Content-Type: application/json' "$@"
 }
 
+rpc_result() {
+    jq -er '
+        if has("error") then
+            error(.error.data.message // .error.message // "Odoo RPC failed")
+        else
+            .result
+        end
+    '
+}
+
+ocall() {
+    local model=$1
+    local method=$2
+    local args=$3
+    local kwargs=${4:-'{}'}
+    local payload
+
+    payload=$(jq -cn \
+        --arg model "$model" \
+        --arg method "$method" \
+        --argjson args "$args" \
+        --argjson kwargs "$kwargs" \
+        '{jsonrpc:"2.0", method:"call", params:{model:$model, method:$method, args:$args, kwargs:$kwargs}}')
+    ocurl --data "$payload" \
+        "https://127.0.0.1/web/dataset/call_kw/$model/$method"
+}
+
+authenticate() {
+    local payload response
+
+    payload=$(jq -cn \
+        --arg db "$database" \
+        --arg login admin \
+        --arg password "$app_password" \
+        '{jsonrpc:"2.0", method:"call", params:{db:$db, login:$login, password:$password}}')
+    response=$(ocurl --data "$payload" \
+        https://127.0.0.1/web/session/authenticate)
+    jq -e '.result.uid == 2 and (.error | not)' <<<"$response" >/dev/null
+}
+
 cleanup() {
     set +e
+    if [[ -n $cron_id ]]; then
+        ocall ir.cron unlink "$(jq -cn --argjson id "$cron_id" '[[$id]]')" |
+            rpc_result >/dev/null
+    fi
     if [[ -n $partner_id ]]; then
-        ocurl --data "{\"jsonrpc\":\"2.0\",\"method\":\"call\",\"params\":{\"model\":\"res.partner\",\"method\":\"unlink\",\"args\":[[$partner_id]],\"kwargs\":{}}}" \
-            https://127.0.0.1/web/dataset/call_kw/res.partner/unlink >/dev/null
+        ocall res.partner unlink "$(jq -cn --argjson id "$partner_id" '[[$id]]')" |
+            rpc_result >/dev/null
     fi
     find "$work" -depth -delete
 }
@@ -33,53 +79,126 @@ for unit in apache2.service postgresql.service odoo.service postfix.service; do
     systemctl --quiet is-enabled "$unit"
 done
 apache2ctl configtest
+apache_modules=$(apache2ctl -M)
+grep -Fq 'proxy_module' <<<"$apache_modules"
+grep -Fq 'proxy_http_module' <<<"$apache_modules"
+grep -Fq 'proxy_wstunnel_module' <<<"$apache_modules"
 grep -Fxq 'VERSION_CODENAME=trixie' /etc/os-release
 grep -Eq '^turnkey-odoo-19\.0' /etc/turnkey_version
 test "$(stat -c '%U:%G:%a' /etc/odoo/odoo.conf)" = root:odoo:640
+test "$(stat -c '%U:%G:%a' "$source_file")" = root:root:644
 test -d /usr/share/adminer
 for module in apache postgresql postfix; do
     test -d "/usr/share/webmin/$module"
 done
 
+runuser -u odoo -- python3 <<'PY'
+import odoo
+
+odoo.tools.config.parse_config(['--config=/etc/odoo/odoo.conf'])
+assert odoo.tools.config['proxy_mode'] is True
+assert odoo.tools.config['workers'] == 2
+assert odoo.tools.config['max_cron_threads'] == 1
+assert odoo.tools.config['gevent_port'] == 8072
+PY
+
+service_environment=$(systemctl show odoo.service --property=Environment --value)
+[[ $service_environment == *ODOO_NOTIFY_CRON_CHANGES=1* ]]
+
 # shellcheck disable=SC1090
 . "$source_file"
+: "${package_source:?package_source is missing from $source_file}"
+: "${installed_version:?installed_version is missing from $source_file}"
+: "${package_url:?package_url is missing from $source_file}"
+: "${package_sha256:?package_sha256 is missing from $source_file}"
+: "${repository_key_fingerprint:?repository_key_fingerprint is missing from $source_file}"
 test "$installed_version" = 19.0.20260825
 test "$(dpkg-query -W -f='${Version}' odoo)" = "$installed_version"
 test "$package_sha256" = e9d89da0fc94cd752b08b1e5501d97f464b834229ff8d68c7fecf24304e1da69
 test "$(gpg --show-keys --with-colons /usr/share/keyrings/odoo-archive-keyring.gpg |
-    awk -F: '$1 == "fpr" { print $10; exit }')" = \
+    awk -F: '$1 == "fpr" && !fingerprint { fingerprint=$10 } END { print fingerprint }')" = \
     "$repository_key_fingerprint"
+grep -Fq 'signed-by=/usr/share/keyrings/odoo-archive-keyring.gpg' \
+    /etc/apt/sources.list.d/odoo.list
 odoo --version | grep -Fq '19.0'
 
-auth=$(ocurl --data "{\"jsonrpc\":\"2.0\",\"method\":\"call\",\"params\":{\"db\":\"$database\",\"login\":\"admin\",\"password\":\"$app_password\"}}" \
-    https://127.0.0.1/web/session/authenticate)
-jq -e '.result.uid == 2' <<<"$auth" >/dev/null
+role_state=$(runuser -u postgres -- psql --no-psqlrc --tuples-only \
+    --no-align postgres --command="
+        SELECT rolsuper, rolcreatedb, rolcreaterole, rolreplication
+        FROM pg_roles WHERE rolname = 'odoo';")
+test "$role_state" = 'f|t|f|f'
+database_owner=$(runuser -u postgres -- psql --no-psqlrc --tuples-only \
+    --no-align postgres --command="
+        SELECT pg_get_userbyid(datdba) FROM pg_database
+        WHERE datname = '$database';")
+test "$database_owner" = odoo
+runuser -u postgres -- psql --no-psqlrc --tuples-only --no-align \
+    "$database" --command='SELECT 1 FROM res_users LIMIT 1;' |
+    grep -Fxq 1
 
-created=$(ocurl --data "{\"jsonrpc\":\"2.0\",\"method\":\"call\",\"params\":{\"model\":\"res.partner\",\"method\":\"create\",\"args\":[{\"name\":\"$fixture\",\"email\":\"$email\"}],\"kwargs\":{}}}" \
-    https://127.0.0.1/web/dataset/call_kw/res.partner/create)
-partner_id=$(jq -er '.result' <<<"$created")
+authenticate
+
+contact_args=$(jq -cn --arg name "$fixture" --arg email "$email" \
+    '[{name:$name, email:$email}]')
+partner_id=$(ocall res.partner create "$contact_args" | rpc_result)
 [[ $partner_id =~ ^[0-9]+$ ]]
 
-readback=$(ocurl --data "{\"jsonrpc\":\"2.0\",\"method\":\"call\",\"params\":{\"model\":\"res.partner\",\"method\":\"search_read\",\"args\":[[[\"id\",\"=\",$partner_id]]],\"kwargs\":{\"fields\":[\"id\",\"name\",\"email\"]}}}" \
-    https://127.0.0.1/web/dataset/call_kw/res.partner/search_read)
+contact_domain=$(jq -cn --argjson id "$partner_id" '[[["id","=",$id]]]')
+contact_fields='{"fields":["id","name","email","phone"]}'
+readback=$(ocall res.partner search_read "$contact_domain" "$contact_fields" |
+    rpc_result)
 jq -e --arg name "$fixture" --arg email "$email" \
-    '.result[0].name == $name and .result[0].email == $email' \
-    <<<"$readback" >/dev/null
-su postgres -c "psql --tuples-only --no-align '$database'" <<EOF |
-SELECT name FROM res_partner WHERE id = $partner_id;
-EOF
+    '.[0].name == $name and .[0].email == $email' <<<"$readback" >/dev/null
+runuser -u postgres -- psql --no-psqlrc --tuples-only --no-align \
+    "$database" --command="SELECT name FROM res_partner WHERE id = $partner_id;" |
     grep -Fxq "$fixture"
 
-systemctl restart postgresql.service odoo.service
+systemctl restart postgresql.service
+systemctl restart odoo.service
+ready=
 for attempt in {1..60}; do
-    ocurl --data "{\"jsonrpc\":\"2.0\",\"method\":\"call\",\"params\":{\"db\":\"$database\",\"login\":\"admin\",\"password\":\"$app_password\"}}" \
-        https://127.0.0.1/web/session/authenticate >/dev/null 2>&1 && break
+    if authenticate >/dev/null 2>&1; then
+        ready=1
+        break
+    fi
     sleep 2
 done
-su postgres -c "psql --tuples-only --no-align '$database'" <<EOF |
-SELECT name FROM res_partner WHERE id = $partner_id;
-EOF
+test "$ready" = 1
+
+main_pid=$(systemctl show odoo.service --property=MainPID --value)
+[[ $main_pid =~ ^[1-9][0-9]*$ ]]
+worker_processes=$(ps --no-headers --ppid "$main_pid" -o pid= | awk 'END { print NR }')
+(( worker_processes >= 4 ))
+
+runuser -u postgres -- psql --no-psqlrc --tuples-only --no-align \
+    "$database" --command="SELECT name FROM res_partner WHERE id = $partner_id;" |
     grep -Fxq "$fixture"
+
+model_domain='[[["model","=","res.partner"]]]'
+model_id=$(ocall ir.model search_read "$model_domain" \
+    '{"fields":["id"],"limit":1}' | rpc_result | jq -er '.[0].id')
+cron_code="model.browse($partner_id).write({'phone': '$cron_marker'})"
+cron_args=$(jq -cn \
+    --arg name "TurnKey v19 cron $partner_id" \
+    --arg code "$cron_code" \
+    --arg nextcall "$(date -u '+%Y-%m-%d %H:%M:%S')" \
+    --argjson model_id "$model_id" \
+    '[{name:$name, model_id:$model_id, state:"code", code:$code, interval_number:1, interval_type:"months", nextcall:$nextcall}]')
+cron_id=$(ocall ir.cron create "$cron_args" | rpc_result)
+[[ $cron_id =~ ^[0-9]+$ ]]
+
+cron_complete=
+for attempt in {1..60}; do
+    readback=$(ocall res.partner search_read "$contact_domain" "$contact_fields" |
+        rpc_result)
+    if jq -e --arg marker "$cron_marker" \
+            '.[0].phone == $marker' <<<"$readback" >/dev/null; then
+        cron_complete=1
+        break
+    fi
+    sleep 2
+done
+test "$cron_complete" = 1
 
 printf '%s\n' "$app_password" | runuser -u odoo -- python3 -c \
     'import sys; import odoo; odoo.tools.config.parse_config(["--config=/etc/odoo/odoo.conf"]); assert odoo.tools.config.verify_admin_password(sys.stdin.readline().rstrip("\n"))'
@@ -94,7 +213,7 @@ grep -Fxq "integrity=APT-signed-by-$repository_key_fingerprint" "$work/update"
 cat >"$result" <<EOF
 package_source=Official Odoo 19 Community daily Debian repository
 installed_version=$installed_version
-runtime_checks=normal init; HTTPS admin login; contact create and JSON readback; PostgreSQL readback; restart persistence; database master password; Adminer and Webmin modules; Postfix
+runtime_checks=normal init; Apache HTTPS admin login; contact create and JSON/PostgreSQL readback; supervised PostgreSQL/Odoo restart; two HTTP workers and a real cron-worker record update; database master password; Adminer and Webmin modules; Postfix
 updater_command=odoo-update --check
 updater_result=$status; candidate=$candidate
 updater_channel=official Odoo 19 Community daily packages

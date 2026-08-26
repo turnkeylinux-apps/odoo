@@ -11,15 +11,23 @@ keyring=/usr/share/keyrings/odoo-archive-keyring.gpg
 
 # shellcheck disable=SC1090
 . "$source_record"
+: "${installed_version:?installed_version is missing from $source_record}"
+: "${repository_key_fingerprint:?repository_key_fingerprint is missing from $source_record}"
 
 installed=$(dpkg-query -W -f='${Version}' odoo)
-candidate=$(apt-cache policy odoo | awk '/Candidate:/ { print $2; exit }')
+policy=$(apt-cache policy odoo)
+candidate=$(awk '
+    /^[[:space:]]*Candidate:/ && !candidate { candidate=$2 }
+    END { print candidate }
+' <<<"$policy")
 fingerprint=$(gpg --show-keys --with-colons "$keyring" |
-    awk -F: '$1 == "fpr" { print $10; exit }')
+    awk -F: '$1 == "fpr" && !fingerprint { fingerprint=$10 } END { print fingerprint }')
 
 test "$installed" = "$installed_version"
 test "$fingerprint" = "$repository_key_fingerprint"
+test -n "$candidate"
 test "$candidate" != "(none)"
+dpkg --compare-versions "$candidate" ge "$installed"
 grep -Fq 'https://nightly.odoo.com/19.0/nightly/deb/ ./' \
     /etc/apt/sources.list.d/odoo.list
 
