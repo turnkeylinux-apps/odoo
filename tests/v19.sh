@@ -93,13 +93,13 @@ for module in apache postgresql postfix; do
 done
 
 runuser -u odoo -- python3 <<'PY'
-import odoo
+from odoo.tools import config
 
-odoo.tools.config.parse_config(['--config=/etc/odoo/odoo.conf'])
-assert odoo.tools.config['proxy_mode'] is True
-assert odoo.tools.config['workers'] == 2
-assert odoo.tools.config['max_cron_threads'] == 1
-assert odoo.tools.config['gevent_port'] == 8072
+config.parse_config(['--config=/etc/odoo/odoo.conf'])
+assert config['proxy_mode'] is True
+assert config['workers'] == 2
+assert config['max_cron_threads'] == 1
+assert config['gevent_port'] == 8072
 PY
 
 service_environment=$(systemctl show odoo.service --property=Environment --value)
@@ -239,7 +239,7 @@ done
 test "$cron_complete" = 1
 
 printf '%s\n' "$app_password" | runuser -u odoo -- python3 -c \
-    'import sys; import odoo; odoo.tools.config.parse_config(["--config=/etc/odoo/odoo.conf"]); assert odoo.tools.config.verify_admin_password(sys.stdin.readline().rstrip("\n"))'
+    'import sys; from odoo.tools import config; config.parse_config(["--config=/etc/odoo/odoo.conf"]); assert config.verify_admin_password(sys.stdin.readline().rstrip("\n"))'
 
 odoo-update --check >"$work/update"
 candidate=$(sed -n 's/^candidate=//p' "$work/update")
