@@ -16,6 +16,10 @@ cookie=$work/cookie
 partner_id=
 cron_id=
 
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+# shellcheck source=odoo-auth-diagnostics.sh
+. "$script_dir/odoo-auth-diagnostics.sh"
+
 command -v jq >/dev/null
 
 ocurl() {
@@ -49,19 +53,6 @@ ocall() {
         '{jsonrpc:"2.0", method:"call", params:{model:$model, method:$method, args:$args, kwargs:$kwargs}}')
     ocurl --data "$payload" \
         "https://127.0.0.1/web/dataset/call_kw/$model/$method"
-}
-
-authenticate() {
-    local payload response
-
-    payload=$(jq -cn \
-        --arg db "$database" \
-        --arg login admin \
-        --arg password "$app_password" \
-        '{jsonrpc:"2.0", method:"call", params:{db:$db, login:$login, password:$password}}')
-    response=$(ocurl --data "$payload" \
-        https://127.0.0.1/web/session/authenticate)
-    jq -e '.result.uid == 2 and (.error | not)' <<<"$response" >/dev/null
 }
 
 cleanup() {
@@ -215,12 +206,15 @@ systemctl restart postgresql.service
 systemctl restart odoo.service
 ready=
 for attempt in {1..60}; do
-    if authenticate >/dev/null 2>&1; then
+    if authenticate quiet >/dev/null 2>&1; then
         ready=1
         break
     fi
     sleep 2
 done
+if [[ $ready != 1 ]]; then
+    authenticate diagnose || true
+fi
 test "$ready" = 1
 
 main_pid=$(systemctl show odoo.service --property=MainPID --value)
