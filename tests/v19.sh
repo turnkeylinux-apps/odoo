@@ -186,6 +186,13 @@ test "$database_owner" = odoo
 runuser -u postgres -- psql --no-psqlrc --tuples-only --no-align \
     "$database" --command='SELECT 1 FROM res_users LIMIT 1;' |
     grep -Fxq 1
+admin_password_hash=$(runuser -u postgres -- psql --no-psqlrc --tuples-only \
+    --no-align "$database" --command="
+        SELECT password FROM res_users
+        WHERE id = (SELECT res_id FROM ir_model_data
+                    WHERE module = 'base' AND name = 'user_admin');")
+[[ $admin_password_hash == \$* ]]
+[[ $admin_password_hash != "$app_password" ]]
 
 authenticate
 

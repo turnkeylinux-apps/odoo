@@ -11,9 +11,34 @@ import subprocess
 import sys
 
 from libinithooks.dialog_wrapper import Dialog
-from pgsqlconf import PostgreSQL
 
 ODOO_DIST_PACKAGES = '/usr/lib/python3/dist-packages'
+ODOO_CONFIG = '/etc/odoo/odoo.conf'
+ODOO_PASSWORD_ENV = 'TURNKEY_ODOO_ADMIN_PASSWORD'
+
+
+def set_example_admin_password(database, password):
+    """Set the example administrator password through Odoo's ORM."""
+    environment = os.environ.copy()
+    environment[ODOO_PASSWORD_ENV] = password
+    script = f"""\
+import os
+password = os.environ.pop({ODOO_PASSWORD_ENV!r})
+admin = env.ref('base.user_admin')
+admin.write({{'password': password}})
+env.cr.commit()
+"""
+    subprocess.run(
+        [
+            '/usr/sbin/runuser', '-u', 'odoo', '--', '/usr/bin/odoo',
+            'shell', f'--config={ODOO_CONFIG}', f'--database={database}',
+            '--no-http',
+        ],
+        input=script,
+        text=True,
+        env=environment,
+        check=True,
+    )
 
 
 def load_odoo_config():
@@ -69,29 +94,18 @@ def main():
 
     config = load_odoo_config()
 
-    processed_password = config.crypt_context.hash(password)
-
     default_db = 'TurnkeylinuxExample'
-    default_db_exists = True
-    try:
-        p = PostgreSQL(default_db)
-        p.execute("UPDATE res_users SET password='{}' WHERE id=2".format(
-            processed_password).encode('utf8'))
-    except subprocess.CalledProcessError:
-        default_db_exists = False
-        print(f"Default DB ({default_db}) not found - skipping its password update")
+    set_example_admin_password(default_db, password)
 
-    config.parse_config(['--config=/etc/odoo/odoo.conf'])
+    config.parse_config([f'--config={ODOO_CONFIG}'])
     config.set_admin_password(password)
     config.save()
-    subprocess.run(['chown', 'root:odoo', '/etc/odoo/odoo.conf'], check=True)
-    subprocess.run(['chmod', '0640', '/etc/odoo/odoo.conf'], check=True)
+    subprocess.run(['chown', 'root:odoo', ODOO_CONFIG], check=True)
+    subprocess.run(['chmod', '0640', ODOO_CONFIG], check=True)
 
     # restart odoo to apply updated password
     subprocess.run(['service', 'odoo', 'restart'], check=True)
 
-    if not default_db_exists:
-        sys.exit(1)
 
 if __name__ == "__main__":
     main()
