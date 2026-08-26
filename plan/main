@@ -5,6 +5,7 @@ xfonts-75dpi
 python3-psycogreen
 
 adduser             
+jq                  /* JSON-RPC acceptance and administrative diagnostics */
 postgresql-client   
 python3
 

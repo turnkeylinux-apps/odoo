@@ -16,6 +16,8 @@ cookie=$work/cookie
 partner_id=
 cron_id=
 
+command -v jq >/dev/null
+
 ocurl() {
     curl --insecure --fail --silent --show-error \
         --cookie "$cookie" --cookie-jar "$cookie" \
