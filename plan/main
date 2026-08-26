@@ -1,8 +1,6 @@
 #include <turnkey/base>
 #include <turnkey/lapp>
 
-xfonts-75dpi
-wkhtmltopdf
 python3-psycogreen
 
 adduser             
