@@ -79,8 +79,12 @@ su postgres -c "psql postgres" << EOF
 create database "$DB_NAME" owner $DB_USER;
 EOF
 
-# Set password/name in config file
-sed -i "s|db_password =.*|db_password = $DB_PASS|" $CONF
+# Set passwords without placing either generated secret in process arguments.
+printf 'db_password=%s\nadmin_passwd=%s\n' \
+    "$DB_PASS" "$ODOO_ADMIN_PASSWORD" |
+    odoo-set-config-secrets "$CONF"
+
+# Set database name and runtime options in config file.
 sed -i "s|db_host =.*|db_host = localhost|" $CONF
 cat >>$CONF <<EOF
 db_name = $DB_NAME
@@ -93,8 +97,6 @@ EOF
 # Stop postgresql server
 systemctl stop postgresql
 
-# Set admin password to random value for now
-sed -i "s|admin_passwd =.*|admin_passwd = $ODOO_ADMIN_PASSWORD|" $CONF
 chown root:odoo $CONF
 chmod 0640 $CONF
 

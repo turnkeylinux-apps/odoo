@@ -5,7 +5,8 @@ turnkey-odoo-19.0 (1) turnkey; urgency=low
 
   * Use a non-superuser PostgreSQL application role, load its generated
     credential from the protected Odoo config during initialization, and keep
-    firstboot credentials out of process arguments and traces.
+    generated database and master passwords out of configuration-update
+    process arguments.
 
   * Configure Odoo's multiprocess proxy mode and route WebSocket traffic to
     its gevent worker.

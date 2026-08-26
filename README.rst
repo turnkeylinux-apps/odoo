@@ -30,9 +30,16 @@ This appliance includes all the standard features in `TurnKey Core`_:
 Creating another Odoo database
 ------------------------------
 
-Use Odoo 19's database command to create and initialize the database::
+Choose a non-default password for the new database administrator, then use
+Odoo 19's database command to create and initialize the database::
 
-    runuser -u odoo -- odoo db -c /etc/odoo/odoo.conf init example
+    read -rsp 'New Odoo database administrator password: ' ODOO_DB_ADMIN_PASSWORD
+    printf '\n'
+    runuser -u odoo -- odoo db -c /etc/odoo/odoo.conf init example \
+        --password "$ODOO_DB_ADMIN_PASSWORD"
+    unset ODOO_DB_ADMIN_PASSWORD
+
+Do not use Odoo's default ``admin`` password.
 
 Add the new name to the comma-separated ``db_name`` setting in
 ``/etc/odoo/odoo.conf``, then restart Odoo::

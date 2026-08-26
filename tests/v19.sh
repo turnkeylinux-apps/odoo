@@ -7,6 +7,7 @@ app_password=${TKL_TEST_APP_PASS:?TKL_TEST_APP_PASS is required}
 source_file=/usr/local/share/turnkey-odoo/source
 database=TurnkeylinuxExample
 test_database=turnkey_v19_acceptance_$$
+test_admin_password=$(mcookie)
 fixture="TurnKey v19 contact $(date +%s)-$$"
 email="odoo-v19-$$@example.invalid"
 work=$(mktemp -d /tmp/odoo-v19.XXXXXXXX)
@@ -70,7 +71,9 @@ PY
 ss -ltn | awk '$4 ~ /:8072$/ { found = 1 } END { exit !found }'
 
 test_database_created=1
-runuser -u odoo -- odoo db -c /etc/odoo/odoo.conf init "$test_database"
+test "$test_admin_password" != admin
+runuser -u odoo -- odoo db -c /etc/odoo/odoo.conf init \
+    "$test_database" --password "$test_admin_password"
 database_evidence=$(su postgres -c \
     "psql --tuples-only --no-align '$test_database'" <<'EOF'
 SELECT name || ':' || state FROM ir_module_module WHERE name = 'base';
@@ -79,6 +82,25 @@ EOF
 )
 grep -Fxq 'base:installed' <<<"$database_evidence"
 grep -Fxq 'admin' <<<"$database_evidence"
+printf '%s\n' "$test_admin_password" | runuser -u odoo -- \
+    python3 -c '
+import sys
+
+from odoo import SUPERUSER_ID, api
+from odoo.modules.registry import Registry
+from odoo.tools import config
+
+database = sys.argv[1]
+password = sys.stdin.readline().rstrip("\n")
+config.parse_config(["--config=/etc/odoo/odoo.conf"])
+with Registry(database).cursor() as cursor:
+    environment = api.Environment(cursor, SUPERUSER_ID, {})
+    authentication = environment["res.users"].authenticate(
+        {"login": "admin", "password": password, "type": "password"},
+        {"interactive": False},
+    )
+    assert authentication["uid"] == 2
+' "$test_database"
 runuser -u odoo -- odoo db -c /etc/odoo/odoo.conf drop "$test_database"
 test_database_created=
 test "$(su postgres -c "psql --tuples-only --no-align postgres" <<EOF
