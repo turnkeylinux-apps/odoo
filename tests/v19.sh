@@ -78,8 +78,16 @@ cleanup() {
 trap cleanup EXIT
 
 for unit in apache2.service postgresql.service odoo.service postfix.service; do
-    systemctl --quiet is-active "$unit"
-    systemctl --quiet is-enabled "$unit"
+    if ! systemctl --quiet is-active "$unit"; then
+        echo "$unit is not active" >&2
+        systemctl --no-pager --full status "$unit" >&2 || true
+        exit 1
+    fi
+    if ! systemctl --quiet is-enabled "$unit"; then
+        echo "$unit is not enabled" >&2
+        systemctl --no-pager --full status "$unit" >&2 || true
+        exit 1
+    fi
 done
 apache2ctl configtest
 apache_modules=$(apache2ctl -M)

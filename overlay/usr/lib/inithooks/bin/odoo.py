@@ -13,6 +13,26 @@ import sys
 from libinithooks.dialog_wrapper import Dialog
 from pgsqlconf import PostgreSQL
 
+ODOO_DIST_PACKAGES = '/usr/lib/python3/dist-packages'
+
+
+def load_odoo_config():
+    """Load Odoo without resolving this inithook as the ``odoo`` module."""
+    script = os.path.realpath(__file__)
+    script_dir = os.path.dirname(script)
+    sys.path[:] = [
+        path for path in sys.path
+        if os.path.realpath(path or os.curdir) != script_dir
+    ]
+    sys.path.insert(0, ODOO_DIST_PACKAGES)
+
+    loaded = sys.modules.get('odoo')
+    if loaded and os.path.realpath(getattr(loaded, '__file__', '')) == script:
+        del sys.modules['odoo']
+
+    from odoo.tools import config
+    return config
+
 
 def usage(s=None):
     if s:
@@ -47,8 +67,7 @@ def main():
                 "This password will also login to 'admin' account of default/example Odoo.",
             blacklist=['\\', '/'])
 
-    sys.path.insert(0, '/usr/lib/python3/dist-packages')
-    from odoo.tools import config
+    config = load_odoo_config()
 
     processed_password = config.crypt_context.hash(password)
 

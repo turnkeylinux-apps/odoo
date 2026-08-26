@@ -6,3 +6,8 @@
 [[ -e $INITHOOKS_CONF ]] && . "$INITHOOKS_CONF"
 
 APP_PASS="$APP_PASS" "$INITHOOKS_PATH/bin/odoo.py"
+
+# Apache may race the firstboot TLS certificate replacement and enter failed
+# state before the common regeneration hook can restart it. At this point the
+# new certificate is stable and the Odoo backend has been configured.
+service apache2 restart
