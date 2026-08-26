@@ -9,6 +9,9 @@ mkdir -p "$work/bin"
 cat >"$work/source" <<'EOF'
 installed_version=19.0.20260825
 repository_key_fingerprint=5D134C924CB06330DCEFE2A1DEF2A2198183CBB5
+wkhtmltox_version=1:0.12.6.1-3.bookworm
+wkhtmltox_architecture=amd64
+wkhtmltox_sha256=98ba0d157b50d36f23bd0dedf4c0aa28c7b0c50fcdcdc54aa5b6bbba81a3941d
 EOF
 cat >"$work/odoo.list" <<'EOF'
 deb [signed-by=/usr/share/keyrings/odoo-archive-keyring.gpg] https://nightly.odoo.com/19.0/nightly/deb/ ./
@@ -17,7 +20,15 @@ touch "$work/keyring"
 
 cat >"$work/bin/dpkg-query" <<'EOF'
 #!/bin/bash
-printf '%s' "${FIXTURE_INSTALLED:-19.0.20260825}"
+if [[ $* == *wkhtmltox* ]]; then
+    if [[ $* == *Architecture* ]]; then
+        printf '%s' "${FIXTURE_RENDERER_ARCHITECTURE:-amd64}"
+    else
+        printf '%s' "${FIXTURE_RENDERER:-1:0.12.6.1-3.bookworm}"
+    fi
+else
+    printf '%s' "${FIXTURE_INSTALLED:-19.0.20260825}"
+fi
 EOF
 cat >"$work/bin/apt-cache" <<'EOF'
 #!/bin/bash
@@ -70,6 +81,9 @@ fi
 
 run_check env FIXTURE_TRAILER_LINES=100000 >"$work/current.out"
 grep -Fxq 'status=up-to-date' "$work/current.out"
+grep -Fxq 'renderer=wkhtmltox-1:0.12.6.1-3.bookworm' "$work/current.out"
+grep -Fxq 'renderer_architecture=amd64' "$work/current.out"
+grep -Fxq 'renderer_policy=pinned-manual-security-review' "$work/current.out"
 run_check env FIXTURE_CANDIDATE=19.0.20260826 >"$work/newer.out"
 grep -Fxq 'status=supervised-update-available' "$work/newer.out"
 
@@ -78,5 +92,7 @@ expect_failure no-candidate env FIXTURE_CANDIDATE='(none)'
 expect_failure downgrade env FIXTURE_CANDIDATE=19.0.20260824
 expect_failure wrong-key env FIXTURE_FINGERPRINT=0000000000000000000000000000000000000000
 expect_failure wrong-install env FIXTURE_INSTALLED=19.0.20260824
+expect_failure wrong-renderer env FIXTURE_RENDERER=1:0.12.6.1-2.bookworm
+expect_failure wrong-renderer-architecture env FIXTURE_RENDERER_ARCHITECTURE=arm64
 
 echo 'odoo updater fixture: PASS'

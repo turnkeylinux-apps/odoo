@@ -3,6 +3,9 @@ turnkey-odoo-19.0 (1) turnkey; urgency=low
   * Install supported Odoo 19 Community from its official daily package
     channel with an exact package digest and bound repository key.
 
+  * Install Odoo's required patched wkhtmltopdf 0.12.6 series from an exact
+    upstream package digest for PDF report rendering.
+
   * Use a non-superuser PostgreSQL application role and keep generated
     database and firstboot credentials out of process arguments and traces.
 

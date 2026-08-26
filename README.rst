@@ -16,6 +16,7 @@ This appliance includes all the standard features in `TurnKey Core`_:
 
     - Odoo 19 Community installed from Odoo's official package repository.
     - Includes modules from base install of Odoo.
+    - Includes the patched wkhtmltopdf 0.12.6 report renderer required by Odoo.
 
 - **Security note**: Odoo application updates require supervision and are not
   configured to install automatically. Refresh APT metadata, check the official

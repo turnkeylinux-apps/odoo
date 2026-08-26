@@ -112,6 +112,10 @@ service_environment=$(systemctl show odoo.service --property=Environment --value
 : "${package_url:?package_url is missing from $source_file}"
 : "${package_sha256:?package_sha256 is missing from $source_file}"
 : "${repository_key_fingerprint:?repository_key_fingerprint is missing from $source_file}"
+: "${wkhtmltox_version:?wkhtmltox_version is missing from $source_file}"
+: "${wkhtmltox_architecture:?wkhtmltox_architecture is missing from $source_file}"
+: "${wkhtmltox_url:?wkhtmltox_url is missing from $source_file}"
+: "${wkhtmltox_sha256:?wkhtmltox_sha256 is missing from $source_file}"
 test "$installed_version" = 19.0.20260825
 test "$(dpkg-query -W -f='${Version}' odoo)" = "$installed_version"
 test "$package_sha256" = e9d89da0fc94cd752b08b1e5501d97f464b834229ff8d68c7fecf24304e1da69
@@ -121,6 +125,17 @@ test "$(gpg --show-keys --with-colons /usr/share/keyrings/odoo-archive-keyring.g
 grep -Fq 'signed-by=/usr/share/keyrings/odoo-archive-keyring.gpg' \
     /etc/apt/sources.list.d/odoo.list
 odoo --version | grep -Fq '19.0'
+test "$wkhtmltox_version" = '1:0.12.6.1-3.bookworm'
+test "$wkhtmltox_architecture" = amd64
+test "$wkhtmltox_url" = https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb
+test "$(dpkg-query -W -f='${Version}' wkhtmltox)" = "$wkhtmltox_version"
+test "$(dpkg-query -W -f='${Architecture}' wkhtmltox)" = "$wkhtmltox_architecture"
+test "$wkhtmltox_sha256" = 98ba0d157b50d36f23bd0dedf4c0aa28c7b0c50fcdcdc54aa5b6bbba81a3941d
+wkhtmltopdf --version | grep -Fq 'wkhtmltopdf 0.12.6.1 (with patched qt)'
+wkhtmltopdf --quiet - "$work/report.pdf" <<'EOF'
+<!doctype html><html><body><p>TurnKey Odoo v19 report probe</p></body></html>
+EOF
+test "$(head -c 4 "$work/report.pdf")" = '%PDF'
 
 role_state=$(runuser -u postgres -- psql --no-psqlrc --tuples-only \
     --no-align postgres --command="
@@ -209,13 +224,17 @@ status=$(sed -n 's/^status=//p' "$work/update")
 test -n "$candidate"
 grep -Fxq 'channel=official-odoo-19-community-daily' "$work/update"
 grep -Fxq "integrity=APT-signed-by-$repository_key_fingerprint" "$work/update"
+grep -Fxq "renderer=wkhtmltox-$wkhtmltox_version" "$work/update"
+grep -Fxq "renderer_architecture=$wkhtmltox_architecture" "$work/update"
+grep -Fxq 'renderer_policy=pinned-manual-security-review' "$work/update"
+grep -Fxq "renderer_integrity=SHA256-$wkhtmltox_sha256" "$work/update"
 
 cat >"$result" <<EOF
 package_source=Official Odoo 19 Community daily Debian repository
 installed_version=$installed_version
-runtime_checks=normal init; Apache HTTPS admin login; contact create and JSON/PostgreSQL readback; supervised PostgreSQL/Odoo restart; two HTTP workers and a real cron-worker record update; database master password; Adminer and Webmin modules; Postfix
+runtime_checks=normal init; Apache HTTPS admin login; contact create and JSON/PostgreSQL readback; supervised PostgreSQL/Odoo restart; two HTTP workers and a real cron-worker record update; patched wkhtmltopdf PDF render; database master password; Adminer and Webmin modules; Postfix
 updater_command=odoo-update --check
-updater_result=$status; candidate=$candidate
+updater_result=$status; candidate=$candidate; renderer=$wkhtmltox_version pinned for manual security review
 updater_channel=official Odoo 19 Community daily packages
-integrity_evidence=repository key $repository_key_fingerprint; package SHA-256 $package_sha256
+integrity_evidence=repository key $repository_key_fingerprint; Odoo package SHA-256 $package_sha256; wkhtmltox package SHA-256 $wkhtmltox_sha256
 EOF

@@ -13,8 +13,13 @@ keyring=/usr/share/keyrings/odoo-archive-keyring.gpg
 . "$source_record"
 : "${installed_version:?installed_version is missing from $source_record}"
 : "${repository_key_fingerprint:?repository_key_fingerprint is missing from $source_record}"
+: "${wkhtmltox_version:?wkhtmltox_version is missing from $source_record}"
+: "${wkhtmltox_architecture:?wkhtmltox_architecture is missing from $source_record}"
+: "${wkhtmltox_sha256:?wkhtmltox_sha256 is missing from $source_record}"
 
 installed=$(dpkg-query -W -f='${Version}' odoo)
+renderer=$(dpkg-query -W -f='${Version}' wkhtmltox)
+renderer_architecture=$(dpkg-query -W -f='${Architecture}' wkhtmltox)
 policy=$(apt-cache policy odoo)
 candidate=$(awk '
     /^[[:space:]]*Candidate:/ && !candidate { candidate=$2 }
@@ -24,6 +29,8 @@ fingerprint=$(gpg --show-keys --with-colons "$keyring" |
     awk -F: '$1 == "fpr" && !fingerprint { fingerprint=$10 } END { print fingerprint }')
 
 test "$installed" = "$installed_version"
+test "$renderer" = "$wkhtmltox_version"
+test "$renderer_architecture" = "$wkhtmltox_architecture"
 test "$fingerprint" = "$repository_key_fingerprint"
 test -n "$candidate"
 test "$candidate" != "(none)"
@@ -43,4 +50,8 @@ candidate=$candidate
 channel=official-odoo-19-community-daily
 status=$status
 integrity=APT-signed-by-$fingerprint
+renderer=wkhtmltox-$renderer
+renderer_architecture=$renderer_architecture
+renderer_policy=pinned-manual-security-review
+renderer_integrity=SHA256-$wkhtmltox_sha256
 EOF
