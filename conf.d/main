@@ -82,7 +82,13 @@ EOF
 # Set password/name in config file
 sed -i "s|db_password =.*|db_password = $DB_PASS|" $CONF
 sed -i "s|db_host =.*|db_host = localhost|" $CONF
-echo "db_name = $DB_NAME" >> $CONF
+cat >>$CONF <<EOF
+db_name = $DB_NAME
+proxy_mode = True
+workers = 2
+max_cron_threads = 1
+gevent_port = 8072
+EOF
 
 # Stop postgresql server
 systemctl stop postgresql
@@ -96,7 +102,7 @@ chmod 0640 $CONF
 usermod -L $SERVICE_USER
 
 # Enable needed modules
-a2enmod proxy_http headers rewrite		
+a2enmod proxy_http proxy_wstunnel headers rewrite
 
 # Configure sites
 a2dissite 000-default
@@ -110,7 +116,6 @@ su odoo -g odoo -s '/bin/bash' -c 'odoo -i base \
     --stop-after-init --db_host=localhost \
     -d '"\"$DB_NAME\""' \
     -r '"\"$DB_USER\""' \
-    -w '"\"$DB_PASS\""' \
     -s -c '"\"$CONF\""
 
 # enable and start odoo

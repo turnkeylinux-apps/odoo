@@ -3,8 +3,12 @@ turnkey-odoo-19.0 (1) turnkey; urgency=low
   * Install supported Odoo 19 Community from its official daily package
     channel with an exact package digest and bound repository key.
 
-  * Use a non-superuser PostgreSQL application role and keep generated
-    database and firstboot credentials out of process arguments and traces.
+  * Use a non-superuser PostgreSQL application role, load its generated
+    credential from the protected Odoo config during initialization, and keep
+    firstboot credentials out of process arguments and traces.
+
+  * Configure Odoo's multiprocess proxy mode and route WebSocket traffic to
+    its gevent worker.
 
   * Add a non-mutating update check, v19 acceptance coverage, and README
     evidence crosswalk.

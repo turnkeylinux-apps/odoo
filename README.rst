@@ -27,40 +27,19 @@ This appliance includes all the standard features in `TurnKey Core`_:
   port 12322 - uses SSL).
 - Webmin modules for configuring Apache2, PostgreSQL and Postfix.
 
-**To create a new Odoo Databse (i.e. site)**
+Creating another Odoo database
+------------------------------
 
-To create a new Odoo DB, the Odoo config file needs to be edited and the
-Odoo service restarted.
+Use Odoo 19's database command to create and initialize the database::
 
-Overview of process:
-1. Edit /etc/odoo/odoo.conf
-   - change value of "db_name" from "TurnkeylinuxExample" to your desired DB
-     name
-2. Restart odoo.service
-3. Reload Odoo login screen in your browser and you should be good to go
+    runuser -u odoo -- odoo db -c /etc/odoo/odoo.conf init example
 
-Webmin steps:
-1.
-    - Browse to 'Tools' >> 'FileManager'
-    - Navigate to '/etc/odoo' and edit the 'odoo.conf' file
-    - Edit as per step 1 above
-    - Save changes
-2.
-    - Navigate to 'System' >> 'Bootup and Shutdown'
-    - Find the "odoo.service" in the list and select it via the checkbox
-    - Scroll to the bottom and select 'Restart'
-3.
-    - As per step 3 above
+Add the new name to the comma-separated ``db_name`` setting in
+``/etc/odoo/odoo.conf``, then restart Odoo::
 
-CLI steps:
-1.
-    - Edit /etc/odoo/odoo.conf as per step 1
-2.
-    - Restart odoo.service::
+    systemctl restart odoo
 
-        systemctl restart odoo
-3.
-    - As per step 3 above
+The database command also provides ``drop``, ``dump``, and ``load`` operations.
 
 **Notice for special Odoo Localization**
 
