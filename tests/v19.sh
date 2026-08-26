@@ -116,6 +116,8 @@ service_environment=$(systemctl show odoo.service --property=Environment --value
 : "${wkhtmltox_architecture:?wkhtmltox_architecture is missing from $source_file}"
 : "${wkhtmltox_url:?wkhtmltox_url is missing from $source_file}"
 : "${wkhtmltox_sha256:?wkhtmltox_sha256 is missing from $source_file}"
+: "${pypdf_compat_package:?pypdf_compat_package is missing from $source_file}"
+: "${pypdf_compat_version:?pypdf_compat_version is missing from $source_file}"
 test "$installed_version" = 19.0.20260825
 test "$(dpkg-query -W -f='${Version}' odoo)" = "$installed_version"
 test "$package_sha256" = e9d89da0fc94cd752b08b1e5501d97f464b834229ff8d68c7fecf24304e1da69
@@ -136,6 +138,27 @@ wkhtmltopdf --quiet - "$work/report.pdf" <<'EOF'
 <!doctype html><html><body><p>TurnKey Odoo v19 report probe</p></body></html>
 EOF
 test "$(head -c 4 "$work/report.pdf")" = '%PDF'
+test "$pypdf_compat_package" = turnkey-odoo-pypdf-compat
+test "$pypdf_compat_version" = 1.0+turnkey19.0.1
+test "$(dpkg-query -W -f='${Version}' "$pypdf_compat_package")" = \
+    "$pypdf_compat_version"
+test "$(dpkg-query -W -f='${Provides}' "$pypdf_compat_package")" = \
+    python3-pypdf2
+apt-get check
+runuser -u odoo -- python3 <<'PY'
+import io
+
+import pypdf
+from odoo.tools import pdf as odoo_pdf
+
+assert odoo_pdf.SUBMOD == '._pypdf'
+writer = pypdf.PdfWriter()
+writer.add_blank_page(width=72, height=72)
+stream = io.BytesIO()
+writer.write(stream)
+stream.seek(0)
+assert len(pypdf.PdfReader(stream).pages) == 1
+PY
 
 role_state=$(runuser -u postgres -- psql --no-psqlrc --tuples-only \
     --no-align postgres --command="
@@ -228,13 +251,18 @@ grep -Fxq "renderer=wkhtmltox-$wkhtmltox_version" "$work/update"
 grep -Fxq "renderer_architecture=$wkhtmltox_architecture" "$work/update"
 grep -Fxq 'renderer_policy=pinned-manual-security-review' "$work/update"
 grep -Fxq "renderer_integrity=SHA256-$wkhtmltox_sha256" "$work/update"
+grep -Fxq "dependency_bridge=$pypdf_compat_package-$pypdf_compat_version" \
+    "$work/update"
+grep -Fxq 'dependency_bridge_provides=python3-pypdf2' "$work/update"
+grep -Eq '^pypdf=python3-pypdf-.+' "$work/update"
+grep -Fxq 'candidate_resolution=apt-simulated' "$work/update"
 
 cat >"$result" <<EOF
 package_source=Official Odoo 19 Community daily Debian repository
 installed_version=$installed_version
 runtime_checks=normal init; Apache HTTPS admin login; contact create and JSON/PostgreSQL readback; supervised PostgreSQL/Odoo restart; two HTTP workers and a real cron-worker record update; patched wkhtmltopdf PDF render; database master password; Adminer and Webmin modules; Postfix
 updater_command=odoo-update --check
-updater_result=$status; candidate=$candidate; renderer=$wkhtmltox_version pinned for manual security review
+updater_result=$status; candidate=$candidate; dependency resolution simulated; renderer=$wkhtmltox_version pinned for manual security review
 updater_channel=official Odoo 19 Community daily packages
-integrity_evidence=repository key $repository_key_fingerprint; Odoo package SHA-256 $package_sha256; wkhtmltox package SHA-256 $wkhtmltox_sha256
+integrity_evidence=repository key $repository_key_fingerprint; Odoo package SHA-256 $package_sha256; wkhtmltox package SHA-256 $wkhtmltox_sha256; pypdf compatibility provider $pypdf_compat_package $pypdf_compat_version
 EOF

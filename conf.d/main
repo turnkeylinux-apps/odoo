@@ -14,12 +14,16 @@ WKHTMLTOX_VERSION=1:0.12.6.1-3.bookworm
 WKHTMLTOX_ARCHITECTURE=amd64
 WKHTMLTOX_URL=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb
 WKHTMLTOX_SHA256=98ba0d157b50d36f23bd0dedf4c0aa28c7b0c50fcdcdc54aa5b6bbba81a3941d
+PYPDF_COMPAT_PACKAGE=turnkey-odoo-pypdf-compat
+PYPDF_COMPAT_VERSION=1.0+turnkey19.0.1
 SOURCE_RECORD=/usr/local/share/turnkey-odoo/source
 
 key=$(mktemp)
 package=$(mktemp --suffix=.deb)
 wkhtmltox=$(mktemp --suffix=.deb)
-trap 'find "$key" "$package" "$wkhtmltox" -maxdepth 0 -type f -delete' EXIT
+pypdf_compat_root=$(mktemp -d)
+pypdf_compat=$(mktemp --suffix=.deb)
+trap 'find "$key" "$package" "$wkhtmltox" "$pypdf_compat_root" "$pypdf_compat" -depth -delete' EXIT
 curl -fsSL "$ODOO_KEY_URL" -o "$key"
 echo "$ODOO_KEY_SHA256  $key" | sha256sum -c -
 test "$(gpg --show-keys --with-colons "$key" |
@@ -51,10 +55,44 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y "$wkhtmltox"
 test "$(dpkg-query -W -f='${Version}' wkhtmltox)" = "$WKHTMLTOX_VERSION"
 wkhtmltopdf --version | grep -Fq 'wkhtmltopdf 0.12.6.1 (with patched qt)'
 
+# Odoo's 19.0 payload supports pypdf and its own Trixie upgrade installs
+# python3-pypdf, but the daily Debian package still names Bookworm's removed
+# python3-pypdf2 package. Keep the verified Odoo payload intact and bridge only
+# that stale, unversioned package name to Debian's maintained implementation.
+mkdir -p "$pypdf_compat_root/DEBIAN"
+cat >"$pypdf_compat_root/DEBIAN/control" <<EOF
+Package: $PYPDF_COMPAT_PACKAGE
+Version: $PYPDF_COMPAT_VERSION
+Section: misc
+Priority: optional
+Maintainer: TurnKey GNU/Linux <admin@turnkeylinux.org>
+Architecture: all
+Depends: python3-pypdf
+Provides: python3-pypdf2
+Description: Odoo 19 pypdf dependency compatibility
+ Satisfies Odoo's stale python3-pypdf2 package dependency with Trixie's
+ maintained python3-pypdf implementation.
+EOF
+dpkg-deb --build --root-owner-group "$pypdf_compat_root" "$pypdf_compat"
+test "$(dpkg-deb --field "$pypdf_compat" Package)" = "$PYPDF_COMPAT_PACKAGE"
+test "$(dpkg-deb --field "$pypdf_compat" Version)" = "$PYPDF_COMPAT_VERSION"
+test "$(dpkg-deb --field "$pypdf_compat" Architecture)" = all
+test "$(dpkg-deb --field "$pypdf_compat" Depends)" = python3-pypdf
+test "$(dpkg-deb --field "$pypdf_compat" Provides)" = python3-pypdf2
+DEBIAN_FRONTEND=noninteractive apt-get install -y "$pypdf_compat"
+test "$(dpkg-query -W -f='${Version}' "$PYPDF_COMPAT_PACKAGE")" = \
+    "$PYPDF_COMPAT_VERSION"
+test "$(dpkg-query -W -f='${Provides}' "$PYPDF_COMPAT_PACKAGE")" = \
+    python3-pypdf2
+python3 -c 'import pypdf; assert pypdf.__version__'
+
 curl -fsSL "$ODOO_PACKAGE_URL" -o "$package"
 echo "$ODOO_PACKAGE_SHA256  $package" | sha256sum -c -
 DEBIAN_FRONTEND=noninteractive apt-get install -y "$package"
 test "$(dpkg-query -W -f='${Version}' odoo)" = "$ODOO_VERSION"
+apt-get check
+runuser -u odoo -- python3 -c \
+    'from odoo.tools import pdf; assert pdf.SUBMOD == "._pypdf"; assert pdf.pypdf.__version__'
 systemctl stop odoo
 
 mkdir -p "$(dirname "$SOURCE_RECORD")"
@@ -69,6 +107,8 @@ wkhtmltox_version=$WKHTMLTOX_VERSION
 wkhtmltox_architecture=$WKHTMLTOX_ARCHITECTURE
 wkhtmltox_url=$WKHTMLTOX_URL
 wkhtmltox_sha256=$WKHTMLTOX_SHA256
+pypdf_compat_package=$PYPDF_COMPAT_PACKAGE
+pypdf_compat_version=$PYPDF_COMPAT_VERSION
 EOF
 chmod 0644 "$SOURCE_RECORD"
 
