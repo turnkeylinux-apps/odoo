@@ -108,6 +108,11 @@ PY
 
 service_environment=$(systemctl show odoo.service --property=Environment --value)
 [[ $service_environment == *ODOO_NOTIFY_CRON_CHANGES=1* ]]
+[[ $service_environment == *HOME=/var/lib/odoo* ]]
+service_main_pid=$(systemctl show odoo.service --property=MainPID --value)
+[[ $service_main_pid =~ ^[1-9][0-9]*$ ]]
+tr '\0' '\n' <"/proc/$service_main_pid/environ" |
+    grep -Fxq 'HOME=/var/lib/odoo'
 
 # shellcheck disable=SC1090
 . "$source_file"
@@ -186,6 +191,8 @@ admin_password_hash=$(runuser -u postgres -- psql --no-psqlrc --tuples-only \
 [[ $admin_password_hash != "$app_password" ]]
 
 authenticate
+test "$(stat -c '%U:%G:%a' /var/lib/odoo/.local/share/Odoo/sessions)" = \
+    odoo:odoo:700
 
 contact_args=$(jq -cn --arg name "$fixture" --arg email "$email" \
     '[{name:$name, email:$email}]')

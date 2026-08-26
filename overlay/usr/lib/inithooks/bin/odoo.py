@@ -104,7 +104,7 @@ def main():
     subprocess.run(['chmod', '0640', ODOO_CONFIG], check=True)
 
     # restart odoo to apply updated password
-    subprocess.run(['service', 'odoo', 'restart'], check=True)
+    subprocess.run(['systemctl', 'restart', 'odoo.service'], check=True)
 
 
 if __name__ == "__main__":
