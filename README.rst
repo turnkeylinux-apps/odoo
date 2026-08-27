@@ -16,21 +16,19 @@ This appliance includes all the standard features in `TurnKey Core`_:
 
     - Odoo 19 Community installed from Odoo's official package repository.
     - Includes modules from base install of Odoo.
+    - Includes the patched wkhtmltopdf 0.12.6 report renderer required by Odoo.
 
 - **Security note**: Odoo application updates require supervision and are not
-  configured to install automatically. Check the official daily channel with
-  ``odoo-update --check`` and back up the database. Prepare a compatible,
-  integrity-checked package with ``odoo-update --prepare OUTPUT.deb``, inspect
-  its reported hashes, then install the selected update and advance its
-  provenance record with ``odoo-update --apply REPACKED_SHA256``.
+  configured to install automatically. Refresh APT metadata, check the official
+  daily channel with ``odoo-update --check``, back up the database, then apply
+  the selected APT update.
 
 - SSL support out of the box.
 - `Adminer`_ administration frontend for PostgreSQL (listening on
   port 12322 - uses SSL).
 - Webmin modules for configuring Apache2, PostgreSQL and Postfix.
 
-Creating another Odoo database
-------------------------------
+**To create a new Odoo Database (i.e. site)**
 
 Choose a non-default password for the new database administrator, then use
 Odoo 19's database command to create and initialize the database::

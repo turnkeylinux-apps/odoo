@@ -1,5 +1,7 @@
 #!/bin/bash -ex
 
+set -o pipefail
+
 # Install the supported Odoo Community package from Odoo's official channel.
 ODOO_VERSION=19.0.20260825
 ODOO_REPO=https://nightly.odoo.com/19.0/nightly/deb
@@ -8,16 +10,25 @@ ODOO_PACKAGE_SHA256=e9d89da0fc94cd752b08b1e5501d97f464b834229ff8d68c7fecf24304e1
 ODOO_KEY_URL=https://nightly.odoo.com/odoo.key
 ODOO_KEY_SHA256=1d169c013a727fa00238ba3f6417d5f33f162f8fbae32159a87ecab6966bfe8e
 ODOO_KEY_FINGERPRINT=5D134C924CB06330DCEFE2A1DEF2A2198183CBB5
+WKHTMLTOX_VERSION=1:0.12.6.1-3.bookworm
+WKHTMLTOX_ARCHITECTURE=amd64
+WKHTMLTOX_URL=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb
+WKHTMLTOX_SHA256=98ba0d157b50d36f23bd0dedf4c0aa28c7b0c50fcdcdc54aa5b6bbba81a3941d
+PYPDF_COMPAT_PACKAGE=turnkey-odoo-pypdf-compat
+PYPDF_COMPAT_VERSION=1.0+turnkey19.0.1
 SOURCE_RECORD=/usr/local/share/turnkey-odoo/source
 
 key=$(mktemp)
 package=$(mktemp --suffix=.deb)
-repacked_package=$(mktemp --suffix=.deb)
-repack_metadata=$(mktemp)
-trap 'find "$key" "$package" "$repacked_package" "$repack_metadata" -maxdepth 0 -type f -delete' EXIT
+wkhtmltox=$(mktemp --suffix=.deb)
+pypdf_compat_root=$(mktemp -d)
+pypdf_compat=$(mktemp --suffix=.deb)
+trap 'find "$key" "$package" "$wkhtmltox" "$pypdf_compat_root" "$pypdf_compat" -depth -delete' EXIT
 curl -fsSL "$ODOO_KEY_URL" -o "$key"
 echo "$ODOO_KEY_SHA256  $key" | sha256sum -c -
-test "$(gpg --show-keys --with-colons "$key" | awk -F: '$1 == "fpr" { print $10; exit }')" = "$ODOO_KEY_FINGERPRINT"
+test "$(gpg --show-keys --with-colons "$key" |
+    awk -F: '$1 == "fpr" && !fingerprint { fingerprint=$10 } END { print fingerprint }')" = \
+    "$ODOO_KEY_FINGERPRINT"
 gpg --batch --yes --dearmor --output /usr/share/keyrings/odoo-archive-keyring.gpg "$key"
 
 cat >/etc/apt/sources.list.d/odoo.list <<EOF
@@ -34,6 +45,47 @@ Pin-Priority: 500
 EOF
 
 apt-get update
+curl -fsSL "$WKHTMLTOX_URL" -o "$wkhtmltox"
+echo "$WKHTMLTOX_SHA256  $wkhtmltox" | sha256sum -c -
+test "$(dpkg-deb --field "$wkhtmltox" Package)" = wkhtmltox
+test "$(dpkg-deb --field "$wkhtmltox" Version)" = "$WKHTMLTOX_VERSION"
+test "$(dpkg-deb --field "$wkhtmltox" Architecture)" = "$WKHTMLTOX_ARCHITECTURE"
+test "$(dpkg --print-architecture)" = "$WKHTMLTOX_ARCHITECTURE"
+DEBIAN_FRONTEND=noninteractive apt-get install -y "$wkhtmltox"
+test "$(dpkg-query -W -f='${Version}' wkhtmltox)" = "$WKHTMLTOX_VERSION"
+wkhtmltopdf --version | grep -Fq 'wkhtmltopdf 0.12.6.1 (with patched qt)'
+
+# Odoo's 19.0 payload supports pypdf and its own Trixie upgrade installs
+# python3-pypdf, but the daily Debian package still names Bookworm's removed
+# python3-pypdf2 package. Keep the verified Odoo payload intact and bridge only
+# that stale, unversioned package name to Debian's maintained implementation.
+mkdir -p "$pypdf_compat_root/DEBIAN"
+cat >"$pypdf_compat_root/DEBIAN/control" <<EOF
+Package: $PYPDF_COMPAT_PACKAGE
+Version: $PYPDF_COMPAT_VERSION
+Section: misc
+Priority: optional
+Maintainer: TurnKey GNU/Linux <admin@turnkeylinux.org>
+Architecture: all
+Depends: python3-pypdf
+Provides: python3-pypdf2
+Description: Odoo 19 pypdf dependency compatibility
+ Satisfies Odoo's stale python3-pypdf2 package dependency with Trixie's
+ maintained python3-pypdf implementation.
+EOF
+dpkg-deb --build --root-owner-group "$pypdf_compat_root" "$pypdf_compat"
+test "$(dpkg-deb --field "$pypdf_compat" Package)" = "$PYPDF_COMPAT_PACKAGE"
+test "$(dpkg-deb --field "$pypdf_compat" Version)" = "$PYPDF_COMPAT_VERSION"
+test "$(dpkg-deb --field "$pypdf_compat" Architecture)" = all
+test "$(dpkg-deb --field "$pypdf_compat" Depends)" = python3-pypdf
+test "$(dpkg-deb --field "$pypdf_compat" Provides)" = python3-pypdf2
+DEBIAN_FRONTEND=noninteractive apt-get install -y "$pypdf_compat"
+test "$(dpkg-query -W -f='${Version}' "$PYPDF_COMPAT_PACKAGE")" = \
+    "$PYPDF_COMPAT_VERSION"
+test "$(dpkg-query -W -f='${Provides}' "$PYPDF_COMPAT_PACKAGE")" = \
+    python3-pypdf2
+python3 -c 'import pypdf; assert pypdf.__version__'
+
 curl -fsSL "$ODOO_PACKAGE_URL" -o "$package"
 echo "$ODOO_PACKAGE_SHA256  $package" | sha256sum -c -
 find "$repacked_package" -maxdepth 0 -type f -delete
@@ -43,6 +95,10 @@ odoo-repack-package "$package" "$repacked_package" >"$repack_metadata"
 test "$upstream_package_sha256" = "$ODOO_PACKAGE_SHA256"
 DEBIAN_FRONTEND=noninteractive apt-get install -y "$repacked_package"
 test "$(dpkg-query -W -f='${Version}' odoo)" = "$ODOO_VERSION"
+apt-get check
+runuser -u odoo -- python3 -c \
+    'from odoo.tools import pdf; assert pdf.SUBMOD == "._pypdf"; assert pdf.pypdf.__version__'
+systemctl stop odoo
 
 mkdir -p "$(dirname "$SOURCE_RECORD")"
 cat >"$SOURCE_RECORD" <<EOF
@@ -55,7 +111,14 @@ upstream_payload_sha256=$upstream_payload_sha256
 dependency_rewrite=$dependency_rewrite
 repository_key_fingerprint=$ODOO_KEY_FINGERPRINT
 repository_key_sha256=$ODOO_KEY_SHA256
+wkhtmltox_version=$WKHTMLTOX_VERSION
+wkhtmltox_architecture=$WKHTMLTOX_ARCHITECTURE
+wkhtmltox_url=$WKHTMLTOX_URL
+wkhtmltox_sha256=$WKHTMLTOX_SHA256
+pypdf_compat_package=$PYPDF_COMPAT_PACKAGE
+pypdf_compat_version=$PYPDF_COMPAT_VERSION
 EOF
+chmod 0644 "$SOURCE_RECORD"
 
 # Set variables
 #
@@ -63,6 +126,7 @@ set +x
 DB_USER=odoo
 DB_PASS=$(mcookie)
 DB_NAME="TurnkeylinuxExample"
+[[ $DB_PASS =~ ^[[:xdigit:]]+$ ]]
 
 # We will use a random password for now. Reset during inithook
 ODOO_ADMIN_PASSWORD=$(mcookie)
@@ -78,15 +142,32 @@ CONF=/etc/odoo/odoo.conf
 # Start postgresql server
 systemctl start postgresql
 
-# Create db user
-su postgres -c "createuser --no-superuser --createdb --no-createrole $DB_USER"
+# The official package creates this role in postinst. Keep the configuration
+# safe if that maintainer-script behavior changes, and enforce least privilege
+# in either case.
+if [[ $(runuser -u postgres -- psql --no-psqlrc --tuples-only --no-align \
+        postgres --command="SELECT 1 FROM pg_roles WHERE rolname = '$DB_USER';") != 1 ]]; then
+    runuser -u postgres -- createuser --no-superuser --createdb \
+        --no-createrole "$DB_USER"
+fi
 
 # Set db user password
-su postgres -c "psql postgres" << EOF
-alter user $DB_USER with encrypted password '$DB_PASS';
+runuser -u postgres -- psql --no-psqlrc --set ON_ERROR_STOP=on postgres <<EOF
+ALTER ROLE $DB_USER WITH LOGIN NOSUPERUSER CREATEDB NOCREATEROLE
+    NOREPLICATION PASSWORD '$DB_PASS';
 EOF
-su postgres -c "psql postgres" << EOF
-create database "$DB_NAME" owner $DB_USER;
+
+if [[ -n $(runuser -u postgres -- psql --no-psqlrc --tuples-only --no-align \
+        postgres --command="SELECT 1 FROM pg_database WHERE datname = '$DB_NAME';") ]]; then
+    echo "refusing to replace existing database: $DB_NAME" >&2
+    exit 1
+fi
+runuser -u postgres -- createdb --owner="$DB_USER" "$DB_NAME"
+
+runuser -u postgres -- psql --no-psqlrc --set ON_ERROR_STOP=on \
+    "$DB_NAME" <<EOF
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+GRANT CREATE ON SCHEMA public TO $DB_USER;
 EOF
 
 # Set passwords without placing either generated secret in process arguments.
@@ -96,8 +177,8 @@ printf 'db_password=%s\nadmin_passwd=%s\n' \
 
 # Set database name and runtime options in config file.
 sed -i "s|db_host =.*|db_host = localhost|" $CONF
-cat >>$CONF <<EOF
-db_name = $DB_NAME
+echo "db_name = $DB_NAME" >> $CONF
+cat >>"$CONF" <<EOF
 proxy_mode = True
 workers = 2
 max_cron_threads = 1
@@ -124,13 +205,11 @@ a2ensite odoo.conf
 systemctl start postgresql
 systemctl start apache2
 
-su odoo -g odoo -s '/bin/bash' -c 'odoo -i base \
-    --stop-after-init --db_host=localhost \
-    -d '"\"$DB_NAME\""' \
-    -r '"\"$DB_USER\""' \
-    -s -c '"\"$CONF\""
+runuser -u odoo -- odoo -i base --stop-after-init \
+    -d "$DB_NAME" -c "$CONF"
 
 # enable and start odoo
+systemctl daemon-reload
 systemctl enable odoo
 systemctl start odoo
 

@@ -5,13 +5,14 @@ turnkey-odoo-19.0 (1) turnkey; urgency=low
     the upstream payload while restoring its source-declared Trixie PDF
     dependency alternative in package control metadata.
 
-  * Use a non-superuser PostgreSQL application role, load its generated
-    credential from the protected Odoo config during initialization, and keep
-    generated database and master passwords out of configuration-update
-    process arguments.
+  * Install Odoo's required patched wkhtmltopdf 0.12.6 series from an exact
+    upstream package digest for PDF report rendering.
 
-  * Configure Odoo's multiprocess proxy mode and route WebSocket traffic to
-    its gevent worker.
+  * Bridge Odoo's stale python3-pypdf2 package dependency to Trixie's
+    maintained python3-pypdf implementation without modifying Odoo's payload.
+
+  * Use a non-superuser PostgreSQL application role and keep generated
+    database and firstboot credentials out of process arguments and traces.
 
   * Add a non-mutating update check, v19 acceptance coverage, and README
     evidence crosswalk. Prepare supervised updates through the same verified,
