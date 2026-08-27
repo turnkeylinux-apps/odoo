@@ -104,7 +104,9 @@ assert config['proxy_mode'] is True
 assert config['workers'] == 2
 assert config['max_cron_threads'] == 1
 assert config['gevent_port'] == 8072
+assert config['data_dir'] == '/var/lib/odoo/.local/share/Odoo'
 PY
+! grep -Fq '/root' /etc/odoo/odoo.conf
 
 service_environment=$(systemctl show odoo.service --property=Environment --value)
 [[ $service_environment == *ODOO_NOTIFY_CRON_CHANGES=1* ]]

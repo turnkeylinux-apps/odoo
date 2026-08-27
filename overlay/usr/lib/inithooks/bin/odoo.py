@@ -5,6 +5,7 @@ Option:
     --pass=    unless provided, will ask interactively
 """
 
+import configparser
 import getopt
 import os
 import subprocess
@@ -14,6 +15,9 @@ from libinithooks.dialog_wrapper import Dialog
 
 ODOO_DIST_PACKAGES = '/usr/lib/python3/dist-packages'
 ODOO_CONFIG = '/etc/odoo/odoo.conf'
+ODOO_HOME = '/var/lib/odoo'
+ODOO_DATA_DIR = f'{ODOO_HOME}/.local/share/Odoo'
+ODOO_XDG_DATA_HOME = f'{ODOO_HOME}/.local/share'
 ODOO_PASSWORD_ENV = 'TURNKEY_ODOO_ADMIN_PASSWORD'
 
 
@@ -59,6 +63,25 @@ def load_odoo_config():
     return config
 
 
+def set_odoo_config_context():
+    """Resolve Odoo's user-scoped defaults below its service account home."""
+    os.environ['HOME'] = ODOO_HOME
+    os.environ['XDG_DATA_HOME'] = ODOO_XDG_DATA_HOME
+
+
+def assert_persisted_data_dir():
+    """Fail firstboot unless the serialized data directory is Odoo-owned."""
+    persisted = configparser.RawConfigParser()
+    if not persisted.read(ODOO_CONFIG):
+        raise RuntimeError(f'cannot read Odoo configuration: {ODOO_CONFIG}')
+
+    data_dir = persisted.get('options', 'data_dir', fallback=None)
+    if data_dir != ODOO_DATA_DIR:
+        raise RuntimeError(
+            f'unexpected Odoo data_dir in {ODOO_CONFIG}: {data_dir!r}'
+        )
+
+
 def usage(s=None):
     if s:
         print("Error:", s, file=sys.stderr)
@@ -92,14 +115,19 @@ def main():
                 "This password will also login to 'admin' account of default/example Odoo.",
             blacklist=['\\', '/'])
 
+    # The hook runs as root, but Odoo must derive and persist user-scoped paths
+    # from the same home as its supervised service and subprocesses.
+    set_odoo_config_context()
     config = load_odoo_config()
 
     default_db = 'TurnkeylinuxExample'
     set_example_admin_password(default_db, password)
 
     config.parse_config([f'--config={ODOO_CONFIG}'])
+    config['data_dir'] = ODOO_DATA_DIR
     config.set_admin_password(password)
-    config.save()
+    config.save(['admin_passwd', 'data_dir'])
+    assert_persisted_data_dir()
     subprocess.run(['chown', 'root:odoo', ODOO_CONFIG], check=True)
     subprocess.run(['chmod', '0640', ODOO_CONFIG], check=True)
 
