@@ -69,7 +69,7 @@ test "$(gpg --show-keys --with-colons /usr/share/keyrings/odoo-archive-keyring.g
     "$repository_key_fingerprint"
 odoo --version | grep -Fq '19.0'
 runuser -u odoo -- python3 - <<'PY'
-import odoo
+import odoo.tools
 
 odoo.tools.config.parse_config(['--config=/etc/odoo/odoo.conf'])
 assert odoo.tools.config['proxy_mode'] is True
@@ -158,7 +158,7 @@ EOF
     grep -Fxq "$fixture"
 
 printf '%s\n' "$app_password" | runuser -u odoo -- python3 -c \
-    'import sys; import odoo; odoo.tools.config.parse_config(["--config=/etc/odoo/odoo.conf"]); assert odoo.tools.config.verify_admin_password(sys.stdin.readline().rstrip("\n"))'
+    'import sys; import odoo.tools; odoo.tools.config.parse_config(["--config=/etc/odoo/odoo.conf"]); assert odoo.tools.config.verify_admin_password(sys.stdin.readline().rstrip("\n"))'
 
 odoo-update --check >"$work/update"
 candidate=$(sed -n 's/^candidate=//p' "$work/update")
