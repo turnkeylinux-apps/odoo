@@ -112,6 +112,56 @@ grep -Fxq "invalid Odoo secret setting: 'unknown'" \
     "$fixture/input-unknown.stderr"
 cmp "$config.before-invalid-input" "$config"
 
+active=$fixture/active.conf
+cat >"$active" <<'EOF'
+[options]
+admin_passwd = active default
+db_password = False
+EOF
+printf 'db_password=%s\nadmin_passwd=%s\n' \
+    "$db_secret" "$master_secret" | "$helper" "$active"
+grep -Fxq "admin_passwd = $master_secret" "$active"
+grep -Fxq "db_password = $db_secret" "$active"
+
+commented_db=$fixture/commented-db.conf
+cat >"$commented_db" <<'EOF'
+[options]
+admin_passwd = active default
+; db_password = False
+EOF
+cp "$commented_db" "$commented_db.before"
+if printf 'db_password=%s\nadmin_passwd=%s\n' \
+        "$db_secret" "$master_secret" |
+        "$helper" "$commented_db" >"$fixture/commented-db.stdout" \
+            2>"$fixture/commented-db.stderr"; then
+    echo 'commented db_password unexpectedly accepted' >&2
+    exit 1
+fi
+grep -Fxq 'missing Odoo secret setting: db_password' \
+    "$fixture/commented-db.stderr"
+cmp "$commented_db.before" "$commented_db"
+
+for near_miss in \
+        ';admin_passwd = admin' \
+        '; admin_passwd=admin' \
+        '; admin_passwd = changed' \
+        ' ; admin_passwd = admin'; do
+    near_miss_config=$fixture/near-miss.conf
+    printf '[options]\n%s\ndb_password = False\n' "$near_miss" \
+        >"$near_miss_config"
+    cp "$near_miss_config" "$near_miss_config.before"
+    if printf 'db_password=%s\nadmin_passwd=%s\n' \
+            "$db_secret" "$master_secret" |
+            "$helper" "$near_miss_config" >"$fixture/near-miss.stdout" \
+                2>"$fixture/near-miss.stderr"; then
+        echo "near-miss admin_passwd unexpectedly accepted: $near_miss" >&2
+        exit 1
+    fi
+    grep -Fxq 'missing Odoo secret setting: admin_passwd' \
+        "$fixture/near-miss.stderr"
+    cmp "$near_miss_config.before" "$near_miss_config"
+done
+
 python3 - "$helper" <<'PY'
 import ast
 import pathlib
