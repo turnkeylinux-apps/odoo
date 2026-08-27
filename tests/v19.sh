@@ -55,7 +55,15 @@ done
 . "$source_file"
 test "$installed_version" = 19.0.20260825
 test "$(dpkg-query -W -f='${Version}' odoo)" = "$installed_version"
-test "$package_sha256" = e9d89da0fc94cd752b08b1e5501d97f464b834229ff8d68c7fecf24304e1da69
+test "$upstream_package_sha256" = e9d89da0fc94cd752b08b1e5501d97f464b834229ff8d68c7fecf24304e1da69
+test -n "$repacked_package_sha256"
+test -n "$upstream_payload_sha256"
+test "$dependency_rewrite" = \
+    python3-pypdf2_to_python3-pypdf2_or_python3-pypdf
+test "$(dpkg-query -W -f='${Status}' python3-pypdf)" = \
+    'install ok installed'
+dpkg-query -W -f='${Depends}' odoo |
+    grep -Fq 'python3-pypdf2 | python3-pypdf'
 test "$(gpg --show-keys --with-colons /usr/share/keyrings/odoo-archive-keyring.gpg |
     awk -F: '$1 == "fpr" { print $10; exit }')" = \
     "$repository_key_fingerprint"
@@ -157,7 +165,7 @@ candidate=$(sed -n 's/^candidate=//p' "$work/update")
 status=$(sed -n 's/^status=//p' "$work/update")
 test -n "$candidate"
 grep -Fxq 'channel=official-odoo-19-community-daily' "$work/update"
-grep -Fxq "integrity=APT-signed-by-$repository_key_fingerprint" "$work/update"
+grep -Fxq "integrity=APT-signed-by-$repository_key_fingerprint; upstream-payload-preserved-by-control-only-repack" "$work/update"
 
 cat >"$result" <<EOF
 package_source=Official Odoo 19 Community daily Debian repository
@@ -166,5 +174,5 @@ runtime_checks=multiprocess proxy and websocket port; supported database create,
 updater_command=odoo-update --check
 updater_result=$status; candidate=$candidate
 updater_channel=official Odoo 19 Community daily packages
-integrity_evidence=repository key $repository_key_fingerprint; package SHA-256 $package_sha256
+integrity_evidence=repository key $repository_key_fingerprint; upstream package SHA-256 $upstream_package_sha256; repacked package SHA-256 $repacked_package_sha256; preserved payload SHA-256 $upstream_payload_sha256
 EOF

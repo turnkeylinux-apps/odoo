@@ -2,6 +2,8 @@
 #include <turnkey/lapp>
 
 python3-psycogreen
+python3-pypdf
+zstd
 
 adduser             
 postgresql-client   

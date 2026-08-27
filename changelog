@@ -1,7 +1,9 @@
 turnkey-odoo-19.0 (1) turnkey; urgency=low
 
   * Install supported Odoo 19 Community from its official daily package
-    channel with an exact package digest and bound repository key.
+    channel with an exact package digest and bound repository key. Preserve
+    the upstream payload while restoring its source-declared Trixie PDF
+    dependency alternative in package control metadata.
 
   * Use a non-superuser PostgreSQL application role, load its generated
     credential from the protected Odoo config during initialization, and keep
@@ -12,7 +14,8 @@ turnkey-odoo-19.0 (1) turnkey; urgency=low
     its gevent worker.
 
   * Add a non-mutating update check, v19 acceptance coverage, and README
-    evidence crosswalk.
+    evidence crosswalk. Prepare supervised updates through the same verified,
+    payload-preserving control correction used at build time.
 
   * Upgrade the base distribution to Debian 13 Trixie.
 
