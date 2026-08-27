@@ -80,15 +80,31 @@ repack_command=$repack
 candidate=19.0.20990101
 fixture_download=$original
 download_candidate() {
+    printf '%s\n' \
+        'Get:1 https://nightly.odoo.com/19.0/nightly/deb odoo fixture' \
+        'download_chatter_executed=1'
     cp "$fixture_download" "$1/odoo_${candidate}_all.deb"
 }
 signed_candidate_sha256() {
     sha256sum "$fixture_download" | awk '{ print $1 }'
 }
-prepare_candidate "$work/updater-prepared.deb" >"$work/updater-result"
+prepare_candidate "$work/updater-prepared.deb" \
+    >"$work/updater-result" 2>"$work/updater-chatter"
 dpkg-deb -f "$work/updater-prepared.deb" Depends |
     grep -Fxq 'bash, python3-pypdf2 | python3-pypdf'
 grep -Fxq "candidate=$candidate" "$work/updater-result"
+grep -Fq 'Get:1 https://nightly.odoo.com/' "$work/updater-chatter"
+grep -Fxq 'download_chatter_executed=1' "$work/updater-chatter"
+if grep -Eq '^(Get:|download_chatter_executed=)' "$work/updater-result"; then
+    echo 'download chatter contaminated updater metadata' >&2
+    exit 1
+fi
+test "$(wc -l <"$work/updater-result")" = 6
+cut -d= -f1 "$work/updater-result" | sort >"$work/updater-result-keys"
+printf '%s\n' candidate dependency_rewrite prepared repacked_package_sha256 \
+    upstream_package_sha256 upstream_payload_sha256 | sort \
+    >"$work/expected-result-keys"
+cmp "$work/expected-result-keys" "$work/updater-result-keys"
 
 signed_candidate_sha256() {
     printf '%064d\n' 0
@@ -100,15 +116,8 @@ fi
 test ! -e "$work/updater-rejected.deb"
 
 approved_sha=$(sha256sum "$repacked_one" | awk '{ print $1 }')
-prepare_candidate() {
-    cp "$repacked_one" "$1"
-    printf '%s\n' \
-        "candidate=$candidate" \
-        "upstream_package_sha256=$(sha256sum "$original" | awk '{ print $1 }')" \
-        "repacked_package_sha256=$approved_sha" \
-        'upstream_payload_sha256=fixture-payload-sha256' \
-        'dependency_rewrite=python3-pypdf2_to_python3-pypdf2_or_python3-pypdf' \
-        "prepared=$1"
+signed_candidate_sha256() {
+    sha256sum "$fixture_download" | awk '{ print $1 }'
 }
 install_package() {
     test -f "$1"
@@ -122,9 +131,11 @@ record_installation() {
 }
 applied_package=
 recorded_installation=
-apply_candidate "$approved_sha" >"$work/apply-result"
+download_chatter_executed=
+apply_candidate "$approved_sha" >"$work/apply-result" 2>"$work/apply-chatter"
 test "$applied_package" = 1
 test -n "$recorded_installation"
+test -z "$download_chatter_executed"
 grep -Fxq "installed=$candidate" "$work/apply-result"
 
 applied_package=

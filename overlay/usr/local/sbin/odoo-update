@@ -53,7 +53,7 @@ prepare_candidate() {
         return 1
     }
     work=$(mktemp -d /tmp/odoo-update.XXXXXXXX)
-    if ! download_candidate "$work"; then
+    if ! download_candidate "$work" >&2; then
         find "$work" -depth -delete
         return 1
     fi
