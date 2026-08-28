@@ -88,12 +88,7 @@ python3 -c 'import pypdf; assert pypdf.__version__'
 
 curl -fsSL "$ODOO_PACKAGE_URL" -o "$package"
 echo "$ODOO_PACKAGE_SHA256  $package" | sha256sum -c -
-find "$repacked_package" -maxdepth 0 -type f -delete
-odoo-repack-package "$package" "$repacked_package" >"$repack_metadata"
-# shellcheck disable=SC1090
-. "$repack_metadata"
-test "$upstream_package_sha256" = "$ODOO_PACKAGE_SHA256"
-DEBIAN_FRONTEND=noninteractive apt-get install -y "$repacked_package"
+DEBIAN_FRONTEND=noninteractive apt-get install -y "$package"
 test "$(dpkg-query -W -f='${Version}' odoo)" = "$ODOO_VERSION"
 apt-get check
 runuser -u odoo -- python3 -c \
@@ -105,10 +100,7 @@ cat >"$SOURCE_RECORD" <<EOF
 package_source=$ODOO_REPO
 installed_version=$ODOO_VERSION
 package_url=$ODOO_PACKAGE_URL
-upstream_package_sha256=$upstream_package_sha256
-repacked_package_sha256=$repacked_package_sha256
-upstream_payload_sha256=$upstream_payload_sha256
-dependency_rewrite=$dependency_rewrite
+package_sha256=$ODOO_PACKAGE_SHA256
 repository_key_fingerprint=$ODOO_KEY_FINGERPRINT
 repository_key_sha256=$ODOO_KEY_SHA256
 wkhtmltox_version=$WKHTMLTOX_VERSION
@@ -170,12 +162,8 @@ REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 GRANT CREATE ON SCHEMA public TO $DB_USER;
 EOF
 
-# Set passwords without placing either generated secret in process arguments.
-printf 'db_password=%s\nadmin_passwd=%s\n' \
-    "$DB_PASS" "$ODOO_ADMIN_PASSWORD" |
-    odoo-set-config-secrets "$CONF"
-
-# Set database name and runtime options in config file.
+# Set password/name in config file
+sed -i "s|db_password =.*|db_password = $DB_PASS|" $CONF
 sed -i "s|db_host =.*|db_host = localhost|" $CONF
 echo "db_name = $DB_NAME" >> $CONF
 cat >>"$CONF" <<EOF
@@ -188,6 +176,8 @@ EOF
 # Stop postgresql server
 systemctl stop postgresql
 
+# Set admin password to random value for now
+sed -i "s|admin_passwd =.*|admin_passwd = $ODOO_ADMIN_PASSWORD|" $CONF
 chown root:odoo $CONF
 chmod 0640 $CONF
 

@@ -30,23 +30,38 @@ This appliance includes all the standard features in `TurnKey Core`_:
 
 **To create a new Odoo Database (i.e. site)**
 
-Choose a non-default password for the new database administrator, then use
-Odoo 19's database command to create and initialize the database::
+To create a new Odoo DB, the Odoo config file needs to be edited and the
+Odoo service restarted.
 
-    read -rsp 'New Odoo database administrator password: ' ODOO_DB_ADMIN_PASSWORD
-    printf '\n'
-    runuser -u odoo -- odoo db -c /etc/odoo/odoo.conf init example \
-        --password "$ODOO_DB_ADMIN_PASSWORD"
-    unset ODOO_DB_ADMIN_PASSWORD
+Overview of process:
+1. Edit /etc/odoo/odoo.conf
+   - change value of "db_name" from "TurnkeylinuxExample" to your desired DB
+     name
+2. Restart odoo.service
+3. Reload Odoo login screen in your browser and you should be good to go
 
-Do not use Odoo's default ``admin`` password.
+Webmin steps:
+1.
+    - Browse to 'Tools' >> 'FileManager'
+    - Navigate to '/etc/odoo' and edit the 'odoo.conf' file
+    - Edit as per step 1 above
+    - Save changes
+2.
+    - Navigate to 'System' >> 'Bootup and Shutdown'
+    - Find the "odoo.service" in the list and select it via the checkbox
+    - Scroll to the bottom and select 'Restart'
+3.
+    - As per step 3 above
 
-Add the new name to the comma-separated ``db_name`` setting in
-``/etc/odoo/odoo.conf``, then restart Odoo::
+CLI steps:
+1.
+    - Edit /etc/odoo/odoo.conf as per step 1
+2.
+    - Restart odoo.service::
 
-    systemctl restart odoo
-
-The database command also provides ``drop``, ``dump``, and ``load`` operations.
+        systemctl restart odoo
+3.
+    - As per step 3 above
 
 **Notice for special Odoo Localization**
 

@@ -8,8 +8,6 @@ result=${TKL_TEST_RESULT:?TKL_TEST_RESULT is required}
 app_password=${TKL_TEST_APP_PASS:?TKL_TEST_APP_PASS is required}
 source_file=/usr/local/share/turnkey-odoo/source
 database=TurnkeylinuxExample
-test_database=turnkey_v19_acceptance_$$
-test_admin_password=$(mcookie)
 fixture="TurnKey v19 contact $(date +%s)-$$"
 email="odoo-v19-$$@example.invalid"
 cron_marker="TKL-v19-cron-$(date +%s)-$$"
@@ -26,7 +24,6 @@ command -v jq >/dev/null
 
 ocurl() {
     curl --insecure --fail --silent --show-error \
-        --connect-timeout 5 --max-time 15 \
         --cookie "$cookie" --cookie-jar "$cookie" \
         --header 'Content-Type: application/json' "$@"
 }
@@ -134,15 +131,7 @@ tr '\0' '\n' <"/proc/$service_main_pid/environ" |
 : "${pypdf_compat_version:?pypdf_compat_version is missing from $source_file}"
 test "$installed_version" = 19.0.20260825
 test "$(dpkg-query -W -f='${Version}' odoo)" = "$installed_version"
-test "$upstream_package_sha256" = e9d89da0fc94cd752b08b1e5501d97f464b834229ff8d68c7fecf24304e1da69
-test -n "$repacked_package_sha256"
-test -n "$upstream_payload_sha256"
-test "$dependency_rewrite" = \
-    python3-pypdf2_to_python3-pypdf2_or_python3-pypdf
-test "$(dpkg-query -W -f='${Status}' python3-pypdf)" = \
-    'install ok installed'
-dpkg-query -W -f='${Depends}' odoo |
-    grep -Fq 'python3-pypdf2 | python3-pypdf'
+test "$package_sha256" = e9d89da0fc94cd752b08b1e5501d97f464b834229ff8d68c7fecf24304e1da69
 test "$(gpg --show-keys --with-colons /usr/share/keyrings/odoo-archive-keyring.gpg |
     awk -F: '$1 == "fpr" && !fingerprint { fingerprint=$10 } END { print fingerprint }')" = \
     "$repository_key_fingerprint"

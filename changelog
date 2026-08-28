@@ -1,9 +1,7 @@
 turnkey-odoo-19.0 (1) turnkey; urgency=low
 
   * Install supported Odoo 19 Community from its official daily package
-    channel with an exact package digest and bound repository key. Preserve
-    the upstream payload while restoring its source-declared Trixie PDF
-    dependency alternative in package control metadata.
+    channel with an exact package digest and bound repository key.
 
   * Install Odoo's required patched wkhtmltopdf 0.12.6 series from an exact
     upstream package digest for PDF report rendering.
@@ -15,8 +13,7 @@ turnkey-odoo-19.0 (1) turnkey; urgency=low
     database and firstboot credentials out of process arguments and traces.
 
   * Add a non-mutating update check, v19 acceptance coverage, and README
-    evidence crosswalk. Prepare supervised updates through the same verified,
-    payload-preserving control correction used at build time.
+    evidence crosswalk.
 
   * Upgrade the base distribution to Debian 13 Trixie.
 

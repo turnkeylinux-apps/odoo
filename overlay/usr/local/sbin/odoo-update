@@ -1,9 +1,13 @@
 #!/bin/bash
 set -Eeuo pipefail
 
+if [[ ${1:-} != --check || $# -ne 1 ]]; then
+    echo "usage: odoo-update --check" >&2
+    exit 2
+fi
+
 source_record=/usr/local/share/turnkey-odoo/source
 keyring=/usr/share/keyrings/odoo-archive-keyring.gpg
-repack_command=/usr/local/sbin/odoo-repack-package
 
 # shellcheck disable=SC1090
 . "$source_record"
@@ -44,170 +48,13 @@ grep -Fq 'https://nightly.odoo.com/19.0/nightly/deb/ ./' \
 DEBIAN_FRONTEND=noninteractive apt-get --simulate --quiet=2 \
     install "odoo=$candidate" >/dev/null
 
-    test "$installed" = "$installed_version"
-    test "$fingerprint" = "$repository_key_fingerprint"
-    test "$candidate" != "(none)"
-    grep -Fq 'https://nightly.odoo.com/19.0/nightly/deb/ ./' \
-        /etc/apt/sources.list.d/odoo.list
-}
+if dpkg --compare-versions "$candidate" eq "$installed"; then
+    status=up-to-date
+else
+    status=supervised-update-available
+fi
 
-signed_candidate_sha256() {
-    apt-cache show "odoo=$candidate" |
-        awk '/^SHA256:/ { print $2; exit }'
-}
-
-signed_candidate_filename() {
-    apt-cache show "odoo=$candidate" |
-        awk '/^Filename:/ { print $2; exit }'
-}
-
-download_candidate() {
-    local directory=$1
-    (
-        cd "$directory"
-        apt-get download "odoo=$candidate"
-    )
-}
-
-prepare_candidate() {
-    local output=$1
-    local work package expected_sha actual_sha metadata prepared
-    local -a packages
-    [[ ! -e $output ]] || {
-        echo "odoo-update: output already exists: $output" >&2
-        return 1
-    }
-    work=$(mktemp -d /tmp/odoo-update.XXXXXXXX)
-    if ! download_candidate "$work" >&2; then
-        find "$work" -depth -delete
-        return 1
-    fi
-    mapfile -t packages < <(find "$work" -maxdepth 1 -type f -name 'odoo_*.deb')
-    if [[ ${#packages[@]} -ne 1 ]]; then
-        echo "odoo-update: expected one downloaded Odoo package" >&2
-        find "$work" -depth -delete
-        return 1
-    fi
-    package=${packages[0]}
-    expected_sha=$(signed_candidate_sha256)
-    actual_sha=$(sha256sum "$package" | awk '{ print $1 }')
-    if [[ -z $expected_sha || $actual_sha != "$expected_sha" ]]; then
-        echo "odoo-update: downloaded package does not match signed metadata" >&2
-        find "$work" -depth -delete
-        return 1
-    fi
-
-    prepared=$work/prepared.deb
-    metadata=$work/repack-metadata
-    if ! "$repack_command" "$package" "$prepared" >"$metadata"; then
-        find "$work" -depth -delete
-        return 1
-    fi
-    # shellcheck disable=SC1090
-    . "$metadata"
-    test "$upstream_package_sha256" = "$expected_sha"
-    mv "$prepared" "$output"
-    find "$work" -depth -delete
-
-    cat <<EOF
-candidate=$candidate
-upstream_package_sha256=$upstream_package_sha256
-repacked_package_sha256=$repacked_package_sha256
-upstream_payload_sha256=$upstream_payload_sha256
-dependency_rewrite=$dependency_rewrite
-prepared=$output
-EOF
-}
-
-install_package() {
-    DEBIAN_FRONTEND=noninteractive apt-get install -y "$1"
-}
-
-installed_version_after_install() {
-    dpkg-query -W -f='${Version}' odoo
-}
-
-record_installation() {
-    local version=$1
-    local upstream_sha=$2
-    local repacked_sha=$3
-    local payload_sha=$4
-    local rewrite=$5
-    local filename temporary
-    filename=$(signed_candidate_filename)
-    [[ -n $filename ]] || {
-        echo 'odoo-update: signed package metadata has no filename' >&2
-        return 1
-    }
-    temporary=$(mktemp "${source_record}.XXXXXXXX")
-    cat >"$temporary" <<EOF
-package_source=$package_source
-installed_version=$version
-package_url=$package_source/${filename#./}
-upstream_package_sha256=$upstream_sha
-repacked_package_sha256=$repacked_sha
-upstream_payload_sha256=$payload_sha
-dependency_rewrite=$rewrite
-repository_key_fingerprint=$repository_key_fingerprint
-repository_key_sha256=$repository_key_sha256
-EOF
-    chmod 0644 "$temporary"
-    chown root:root "$temporary"
-    mv "$temporary" "$source_record"
-}
-
-apply_candidate() {
-    local expected_repacked_sha=$1
-    local work package metadata installed_after
-    [[ $expected_repacked_sha =~ ^[0-9a-f]{64}$ ]] || {
-        echo 'odoo-update: expected repacked SHA-256 must be 64 lowercase hex characters' >&2
-        return 1
-    }
-    work=$(mktemp -d /tmp/odoo-update-apply.XXXXXXXX)
-    package=$work/candidate.deb
-    metadata=$work/metadata
-    if ! prepare_candidate "$package" >"$metadata"; then
-        find "$work" -depth -delete
-        return 1
-    fi
-    # shellcheck disable=SC1090
-    . "$metadata"
-    if [[ $repacked_package_sha256 != "$expected_repacked_sha" ]]; then
-        echo 'odoo-update: prepared package does not match approved SHA-256' >&2
-        find "$work" -depth -delete
-        return 1
-    fi
-    if ! install_package "$package"; then
-        find "$work" -depth -delete
-        return 1
-    fi
-    installed_after=$(installed_version_after_install)
-    test "$installed_after" = "$candidate"
-    record_installation "$candidate" "$upstream_package_sha256" \
-        "$repacked_package_sha256" "$upstream_payload_sha256" \
-        "$dependency_rewrite"
-    find "$work" -depth -delete
-    cat <<EOF
-installed=$candidate
-upstream_package_sha256=$upstream_package_sha256
-repacked_package_sha256=$repacked_package_sha256
-upstream_payload_sha256=$upstream_payload_sha256
-dependency_rewrite=$dependency_rewrite
-EOF
-}
-
-main() {
-    [[ $# -ge 1 ]] || usage
-    load_channel
-    case $1 in
-        --check)
-            [[ $# -eq 1 ]] || usage
-            if dpkg --compare-versions "$candidate" eq "$installed"; then
-                status=up-to-date
-            else
-                status=supervised-update-available
-            fi
-            cat <<EOF
+cat <<EOF
 installed=$installed
 candidate=$candidate
 channel=official-odoo-19-community-daily
@@ -222,21 +69,3 @@ dependency_bridge_provides=python3-pypdf2
 pypdf=python3-pypdf-$pypdf_version
 candidate_resolution=apt-simulated
 EOF
-            ;;
-        --prepare)
-            [[ $# -eq 2 ]] || usage
-            prepare_candidate "$2"
-            ;;
-        --apply)
-            [[ $# -eq 2 ]] || usage
-            apply_candidate "$2"
-            ;;
-        *)
-            usage
-            ;;
-    esac
-}
-
-if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
-    main "$@"
-fi
