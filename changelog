@@ -1,3 +1,24 @@
+turnkey-odoo-19.0 (1) turnkey; urgency=low
+
+  * Install supported Odoo 19 Community from its official daily package
+    channel with an exact package digest and bound repository key.
+
+  * Install Odoo's required patched wkhtmltopdf 0.12.6 series from an exact
+    upstream package digest for PDF report rendering.
+
+  * Bridge Odoo's stale python3-pypdf2 package dependency to Trixie's
+    maintained python3-pypdf implementation without modifying Odoo's payload.
+
+  * Use a non-superuser PostgreSQL application role and keep generated
+    database and firstboot credentials out of process arguments and traces.
+
+  * Add a non-mutating update check, v19 acceptance coverage, and README
+    evidence crosswalk.
+
+  * Upgrade the base distribution to Debian 13 Trixie.
+
+ -- TurnKey Linux release engineering <release-engineering@turnkeylinux.org>  Tue, 25 Aug 2026 00:00:00 +0000
+
 turnkey-odoo-18.0 (1) turnkey; urgency=low
 
   * Install Odoo v16.x from Debian backports (bookworm-backports) apt

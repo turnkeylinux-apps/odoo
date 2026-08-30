@@ -1,0 +1,71 @@
+#!/bin/bash
+set -Eeuo pipefail
+
+if [[ ${1:-} != --check || $# -ne 1 ]]; then
+    echo "usage: odoo-update --check" >&2
+    exit 2
+fi
+
+source_record=/usr/local/share/turnkey-odoo/source
+keyring=/usr/share/keyrings/odoo-archive-keyring.gpg
+
+# shellcheck disable=SC1090
+. "$source_record"
+: "${installed_version:?installed_version is missing from $source_record}"
+: "${repository_key_fingerprint:?repository_key_fingerprint is missing from $source_record}"
+: "${wkhtmltox_version:?wkhtmltox_version is missing from $source_record}"
+: "${wkhtmltox_architecture:?wkhtmltox_architecture is missing from $source_record}"
+: "${wkhtmltox_sha256:?wkhtmltox_sha256 is missing from $source_record}"
+: "${pypdf_compat_package:?pypdf_compat_package is missing from $source_record}"
+: "${pypdf_compat_version:?pypdf_compat_version is missing from $source_record}"
+
+installed=$(dpkg-query -W -f='${Version}' odoo)
+renderer=$(dpkg-query -W -f='${Version}' wkhtmltox)
+renderer_architecture=$(dpkg-query -W -f='${Architecture}' wkhtmltox)
+compat_version=$(dpkg-query -W -f='${Version}' "$pypdf_compat_package")
+compat_provides=$(dpkg-query -W -f='${Provides}' "$pypdf_compat_package")
+pypdf_version=$(dpkg-query -W -f='${Version}' python3-pypdf)
+policy=$(apt-cache policy odoo)
+candidate=$(awk '
+    /^[[:space:]]*Candidate:/ && !candidate { candidate=$2 }
+    END { print candidate }
+' <<<"$policy")
+fingerprint=$(gpg --show-keys --with-colons "$keyring" |
+    awk -F: '$1 == "fpr" && !fingerprint { fingerprint=$10 } END { print fingerprint }')
+
+test "$installed" = "$installed_version"
+test "$renderer" = "$wkhtmltox_version"
+test "$renderer_architecture" = "$wkhtmltox_architecture"
+test "$compat_version" = "$pypdf_compat_version"
+grep -Eq '(^|, )[[:space:]]*python3-pypdf2([[:space:]]|$)' <<<"$compat_provides"
+test -n "$pypdf_version"
+test "$fingerprint" = "$repository_key_fingerprint"
+test -n "$candidate"
+test "$candidate" != "(none)"
+dpkg --compare-versions "$candidate" ge "$installed"
+grep -Fq 'https://nightly.odoo.com/19.0/nightly/deb/ ./' \
+    /etc/apt/sources.list.d/odoo.list
+DEBIAN_FRONTEND=noninteractive apt-get --simulate --quiet=2 \
+    install "odoo=$candidate" >/dev/null
+
+if dpkg --compare-versions "$candidate" eq "$installed"; then
+    status=up-to-date
+else
+    status=supervised-update-available
+fi
+
+cat <<EOF
+installed=$installed
+candidate=$candidate
+channel=official-odoo-19-community-daily
+status=$status
+integrity=APT-signed-by-$fingerprint
+renderer=wkhtmltox-$renderer
+renderer_architecture=$renderer_architecture
+renderer_policy=pinned-manual-security-review
+renderer_integrity=SHA256-$wkhtmltox_sha256
+dependency_bridge=$pypdf_compat_package-$compat_version
+dependency_bridge_provides=python3-pypdf2
+pypdf=python3-pypdf-$pypdf_version
+candidate_resolution=apt-simulated
+EOF

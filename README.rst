@@ -12,26 +12,29 @@ or paid commercial ones.
 
 This appliance includes all the standard features in `TurnKey Core`_:
 
-- Odoo configurations for TurnKey v18.x:
+- Odoo configurations for TurnKey v19.x:
 
-    - Odoo v16 installed from debian backports apt repo (v18.x).
+    - Odoo 19 Community installed from Odoo's official package repository.
     - Includes modules from base install of Odoo.
+    - Includes the patched wkhtmltopdf 0.12.6 report renderer required by Odoo.
 
-- **Security note**: As of 18.0, due to using the debian backports repo
-  Updates to Odoo **ARE NOT** configured to install automatically.
+- **Security note**: Odoo application updates require supervision and are not
+  configured to install automatically. Refresh APT metadata, check the official
+  daily channel with ``odoo-update --check``, back up the database, then apply
+  the selected APT update.
 
 - SSL support out of the box.
 - `Adminer`_ administration frontend for PostgreSQL (listening on
   port 12322 - uses SSL).
 - Webmin modules for configuring Apache2, PostgreSQL and Postfix.
 
-**To create a new Odoo Databse (i.e. site)**
+**To create a new Odoo Database (i.e. site)**
 
 To create a new Odoo DB, the Odoo config file needs to be edited and the
 Odoo service restarted.
 
 Overview of process:
-1. Edit /etc/odoo/odoo
+1. Edit /etc/odoo/odoo.conf
    - change value of "db_name" from "TurnkeylinuxExample" to your desired DB
      name
 2. Restart odoo.service
@@ -52,7 +55,7 @@ Webmin steps:
 
 CLI steps:
 1.
-    - Edit /etc/odoo/odoo as per step 1
+    - Edit /etc/odoo/odoo.conf as per step 1
 2.
     - Restart odoo.service::
 

@@ -1,13 +1,13 @@
-#!/bin/bash -e		
+#!/bin/bash -e
 # set Odoo Admin password
 
 . /etc/default/inithooks
 
-[ -e $INITHOOKS_CONF ] && . $INITHOOKS_CONF
+[[ -e $INITHOOKS_CONF ]] && . "$INITHOOKS_CONF"
 
-$INITHOOKS_PATH/bin/odoo.py --pass="$APP_PASS"
+APP_PASS="$APP_PASS" "$INITHOOKS_PATH/bin/odoo.py"
 
-# Since we reset the password, reload Odoo
-# Don't use systemd/systemctl right now as lxc/ovz does not
-# use systemd
-service odoo restart
+# Apache may race the firstboot TLS certificate replacement and enter failed
+# state before the common regeneration hook can restart it. At this point the
+# new certificate is stable and the Odoo backend has been configured.
+service apache2 restart

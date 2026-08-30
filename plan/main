@@ -1,12 +1,11 @@
 #include <turnkey/base>
 #include <turnkey/lapp>
 
-odoo-16
 xfonts-75dpi
-wkhtmltopdf
 python3-psycogreen
 
 adduser             
+jq                  /* JSON-RPC acceptance and administrative diagnostics */
 postgresql-client   
 python3
 
